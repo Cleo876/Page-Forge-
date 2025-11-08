@@ -1,12 +1,12 @@
-// PageForge Automatic Pagination Module
+// PageForge Visual Pagination Module
 // Filename: pageforge-pagination.js
-// Purpose: Adds automatic page creation with digital paper appearance
+// Purpose: Adds visual page boundaries without interfering with content
 
 class PageForgePagination {
     constructor(editor) {
         this.editor = editor;
         this.editorWrapper = document.getElementById('editor-wrapper');
-        this.isPaginationEnabled = true; // Enabled by default
+        this.isPaginationEnabled = false; // Disabled by default - user can enable
         this.pageElements = [];
         
         // A4 dimensions in pixels at 96 DPI
@@ -14,108 +14,129 @@ class PageForgePagination {
         this.pageHeight = 1122;
         this.pageMargin = 96;
         
-        // Lines per page estimation (approx 55 lines for A4 with 14px font)
-        this.linesPerPage = 55;
-        this.currentLines = 0;
-        
         this.init();
     }
     
     init() {
         this.setupStyles();
+        this.addToolbarButtons();
         this.setupEventListeners();
-        this.enablePagination();
-        console.log('Auto Pagination initialized');
+        console.log('Visual Pagination initialized (disabled by default)');
     }
     
     setupStyles() {
-        if (document.getElementById('auto-pagination-styles')) return;
+        if (document.getElementById('visual-pagination-styles')) return;
         
         const style = document.createElement('style');
-        style.id = 'auto-pagination-styles';
+        style.id = 'visual-pagination-styles';
         style.textContent = `
-            /* Auto Page Canvas - Always Enabled */
-            .auto-pagination-enabled #editor {
+            /* Visual Page Overlay - Non-intrusive */
+            .visual-pagination-enabled #editor {
+                position: relative;
                 background: transparent !important;
-                box-shadow: none !important;
-                min-height: auto !important;
-                padding: 0 !important;
-                width: 100% !important;
-                display: flex;
-                flex-direction: column;
-                gap: 32px;
+                /* Keep all original styles - we don't override anything important */
             }
             
-            /* Digital Paper Page */
-            .digital-page {
-                width: ${this.pageWidth}px;
-                min-height: ${this.pageHeight}px;
-                background: white;
-                margin: 0 auto;
-                box-shadow: 
-                    0 0 0 1px rgba(0,0,0,0.1),
-                    0 4px 12px rgba(0, 0, 0, 0.08),
-                    0 2px 4px rgba(0, 0, 0, 0.04);
-                position: relative;
-                border-radius: 2px;
-                overflow: hidden;
-                transition: box-shadow 0.2s ease;
-            }
-            
-            .digital-page:hover {
-                box-shadow: 
-                    0 0 0 1px rgba(59, 130, 246, 0.3),
-                    0 8px 24px rgba(0, 0, 0, 0.12),
-                    0 4px 8px rgba(0, 0, 0, 0.06);
-            }
-            
-            .dark .digital-page {
-                background: #1f2937;
-                box-shadow: 
-                    0 0 0 1px rgba(255,255,255,0.1),
-                    0 4px 12px rgba(0, 0, 0, 0.3),
-                    0 2px 4px rgba(0, 0, 0, 0.2);
-            }
-            
-            .dark .digital-page:hover {
-                box-shadow: 
-                    0 0 0 1px rgba(96, 165, 250, 0.4),
-                    0 8px 24px rgba(0, 0, 0, 0.4),
-                    0 4px 8px rgba(0, 0, 0, 0.3);
-            }
-            
-            /* Page Content Area */
-            .page-content-area {
-                padding: ${this.pageMargin}px;
-                min-height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
-                position: relative;
-            }
-            
-            /* Page Number */
-            .page-number {
+            /* Page Boundary Overlay */
+            .page-boundary-overlay {
                 position: absolute;
-                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: ${this.pageWidth}px;
+                height: ${this.pageHeight}px;
+                pointer-events: none;
+                z-index: 5;
+                background: 
+                    /* Paper shadow effect */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(0,0,0,0.02) ${this.pageHeight - 20}px,
+                        rgba(0,0,0,0.04) ${this.pageHeight - 10}px,
+                        rgba(0,0,0,0.08) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Page border */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Left and right borders */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
+                border-radius: 2px;
+            }
+            
+            .dark .page-boundary-overlay {
+                background: 
+                    /* Paper shadow effect for dark mode */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(255,255,255,0.02) ${this.pageHeight - 20}px,
+                        rgba(255,255,255,0.04) ${this.pageHeight - 10}px,
+                        rgba(255,255,255,0.08) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Page border for dark mode */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Left and right borders for dark mode */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
+            }
+            
+            /* Page Number Indicator */
+            .page-number-indicator {
+                position: absolute;
+                bottom: ${this.pageMargin - 25}px;
                 right: ${this.pageMargin}px;
                 font-size: 11px;
                 color: #6b7280;
                 font-weight: 500;
                 font-family: 'Inter', sans-serif;
+                background: rgba(255,255,255,0.9);
+                padding: 2px 6px;
+                border-radius: 3px;
+                border: 1px solid rgba(0,0,0,0.1);
             }
             
-            .dark .page-number {
+            .dark .page-number-indicator {
                 color: #9ca3af;
+                background: rgba(31, 41, 55, 0.9);
+                border: 1px solid rgba(255,255,255,0.1);
             }
             
-            /* Writing Guidelines (Subtle) */
-            .writing-guidelines {
+            /* Writing Guidelines (Very Subtle) */
+            .writing-guidelines-overlay {
                 position: absolute;
                 top: ${this.pageMargin}px;
                 bottom: ${this.pageMargin}px;
                 left: ${this.pageMargin}px;
                 right: ${this.pageMargin}px;
                 pointer-events: none;
-                z-index: 1;
-                opacity: 0.03;
+                z-index: 4;
+                opacity: 0.02;
                 background-image: 
                     repeating-linear-gradient(
                         to bottom,
@@ -126,7 +147,7 @@ class PageForgePagination {
                     );
             }
             
-            .dark .writing-guidelines {
+            .dark .writing-guidelines-overlay {
                 background-image: 
                     repeating-linear-gradient(
                         to bottom,
@@ -138,266 +159,212 @@ class PageForgePagination {
             }
             
             /* Current Page Highlight */
-            .digital-page.current-page {
-                box-shadow: 
-                    0 0 0 2px #4f46e5,
-                    0 8px 24px rgba(0, 0, 0, 0.12) !important;
+            .page-boundary-overlay.current-page {
+                background: 
+                    /* Enhanced paper shadow for current page */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(79, 70, 229, 0.05) ${this.pageHeight - 20}px,
+                        rgba(79, 70, 229, 0.1) ${this.pageHeight - 10}px,
+                        rgba(79, 70, 229, 0.15) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Enhanced border for current page */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Enhanced left and right borders */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
             }
             
-            .dark .digital-page.current-page {
-                box-shadow: 
-                    0 0 0 2px #6366f1,
-                    0 8px 24px rgba(0, 0, 0, 0.4) !important;
+            .dark .page-boundary-overlay.current-page {
+                background: 
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(99, 102, 241, 0.05) ${this.pageHeight - 20}px,
+                        rgba(99, 102, 241, 0.1) ${this.pageHeight - 10}px,
+                        rgba(99, 102, 241, 0.15) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
             }
             
-            /* Page Header (Optional) */
-            .page-header {
-                position: absolute;
-                top: 20px;
-                left: ${this.pageMargin}px;
-                right: ${this.pageMargin}px;
-                height: 1px;
-                background: linear-gradient(90deg, 
-                    transparent 0%, 
-                    #e5e7eb 20%, 
-                    #e5e7eb 80%, 
-                    transparent 100%);
+            /* Toolbar button styling */
+            .pagination-toggle-btn.active {
+                background-color: #dbeafe !important;
+                color: #1d4ed8 !important;
             }
             
-            .dark .page-header {
-                background: linear-gradient(90deg, 
-                    transparent 0%, 
-                    #4b5563 20%, 
-                    #4b5563 80%, 
-                    transparent 100%);
-            }
-            
-            /* Auto-expand last page */
-            .digital-page:last-child {
-                min-height: ${this.pageHeight}px;
-            }
-            
-            /* Ensure content is visible and editable */
-            .page-content-area > * {
-                position: relative;
-                z-index: 2;
-            }
-            
-            /* Smooth transitions */
-            .digital-page {
-                transition: all 0.3s ease;
+            .dark .pagination-toggle-btn.active {
+                background-color: #1e3a8a !important;
+                color: #93c5fd !important;
             }
         `;
         document.head.appendChild(style);
     }
     
-    setupEventListeners() {
-        // Monitor content changes to automatically manage pages
-        const observer = new MutationObserver(() => {
-            if (this.isPaginationEnabled) {
-                setTimeout(() => this.organizeContentIntoPages(), 50);
-            }
-        });
-        
-        observer.observe(this.editor, {
-            childList: true,
-            subtree: true,
-            characterData: true
-        });
-        
-        // Update current page on scroll
-        this.editorWrapper.addEventListener('scroll', () => {
-            this.updateCurrentPageIndicator();
-        });
-        
-        console.log('Auto pagination listeners setup');
-    }
-    
-    enablePagination() {
-        this.editorWrapper.classList.add('auto-pagination-enabled');
-        this.organizeContentIntoPages();
-        console.log('Auto pagination enabled');
-    }
-    
-    disablePagination() {
-        this.editorWrapper.classList.remove('auto-pagination-enabled');
-        this.removePageWrappers();
-        console.log('Auto pagination disabled');
-    }
-    
-    organizeContentIntoPages() {
-        // Get all direct children of editor (excluding page wrappers)
-        const contentElements = Array.from(this.editor.children).filter(
-            child => !child.classList.contains('digital-page')
-        );
-        
-        if (contentElements.length === 0) {
-            this.ensureAtLeastOnePage();
+    addToolbarButtons() {
+        const toolbar = document.querySelector('.flex-shrink-0.flex.items-center.gap-1.px-4.py-2');
+        if (!toolbar) {
+            console.log('Toolbar not found');
             return;
         }
         
-        this.removePageWrappers();
-        this.distributeContentToPages(contentElements);
-        this.updateCurrentPageIndicator();
-    }
-    
-    distributeContentToPages(elements) {
-        let currentPage = this.createNewPage(1);
-        let currentPageHeight = 0;
-        let pageNumber = 1;
+        // Add separator
+        const separator = document.createElement('div');
+        separator.className = 'h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2';
+        toolbar.appendChild(separator);
         
-        elements.forEach((element, index) => {
-            const elementHeight = this.calculateElementHeight(element);
-            
-            // If adding this element would exceed page height, create new page
-            if (currentPageHeight + elementHeight > this.getAvailablePageHeight() && currentPageHeight > 0) {
-                pageNumber++;
-                currentPage = this.createNewPage(pageNumber);
-                currentPageHeight = 0;
-            }
-            
-            // Add element to current page
-            currentPage.querySelector('.page-content-area').appendChild(element);
-            currentPageHeight += elementHeight;
-            
-            // Ensure we have at least one element per page
-            if (currentPageHeight === 0 && index === elements.length - 1) {
-                const emptyParagraph = document.createElement('p');
-                emptyParagraph.innerHTML = '&nbsp;';
-                currentPage.querySelector('.page-content-area').appendChild(emptyParagraph);
-            }
-        });
-        
-        console.log(`Organized content into ${pageNumber} pages`);
-    }
-    
-    createNewPage(pageNumber) {
-        const page = document.createElement('div');
-        page.className = 'digital-page';
-        page.dataset.pageNumber = pageNumber;
-        
-        page.innerHTML = `
-            <div class="writing-guidelines"></div>
-            <div class="page-header"></div>
-            <div class="page-content-area" contenteditable="true"></div>
-            <div class="page-number">Page ${pageNumber}</div>
+        // Visual Pagination Toggle Button
+        this.paginationToggleBtn = document.createElement('button');
+        this.paginationToggleBtn.className = 'toolbar-btn pagination-toggle-btn';
+        this.paginationToggleBtn.title = 'Toggle Page Boundaries';
+        this.paginationToggleBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
         `;
+        this.paginationToggleBtn.addEventListener('click', () => this.toggleVisualPagination());
+        toolbar.appendChild(this.paginationToggleBtn);
         
-        this.editor.appendChild(page);
-        this.pageElements.push(page);
-        
-        return page;
+        console.log('Visual pagination button added to toolbar');
     }
     
-    calculateElementHeight(element) {
-        // Simple height estimation based on content
-        const tag = element.tagName.toLowerCase();
-        const text = element.textContent || '';
-        const children = element.children.length;
-        
-        let baseHeight = 0;
-        
-        switch(tag) {
-            case 'h1':
-                baseHeight = 60;
-                break;
-            case 'h2':
-                baseHeight = 45;
-                break;
-            case 'h3':
-                baseHeight = 35;
-                break;
-            case 'p':
-                baseHeight = Math.max(24, Math.ceil(text.length / 80) * 24);
-                break;
-            case 'ul':
-            case 'ol':
-                baseHeight = Math.max(30, children * 28);
-                break;
-            case 'blockquote':
-                baseHeight = 60;
-                break;
-            default:
-                baseHeight = element.offsetHeight || 40;
-        }
-        
-        // Add margin compensation
-        return baseHeight + 16;
-    }
-    
-    getAvailablePageHeight() {
-        return this.pageHeight - (this.pageMargin * 2) - 40; // 40px for page number area
-    }
-    
-    ensureAtLeastOnePage() {
-        if (this.pageElements.length === 0) {
-            const page = this.createNewPage(1);
-            const emptyParagraph = document.createElement('p');
-            emptyParagraph.innerHTML = '&nbsp;';
-            page.querySelector('.page-content-area').appendChild(emptyParagraph);
-        }
-    }
-    
-    removePageWrappers() {
-        this.pageElements.forEach(page => page.remove());
-        this.pageElements = [];
-        
-        // Extract all content from pages and put back in editor
-        const pages = this.editor.querySelectorAll('.digital-page');
-        pages.forEach(page => {
-            const contentArea = page.querySelector('.page-content-area');
-            if (contentArea) {
-                const children = Array.from(contentArea.children);
-                children.forEach(child => {
-                    this.editor.appendChild(child);
-                });
-            }
-            page.remove();
-        });
-    }
-    
-    updateCurrentPageIndicator() {
-        const pages = this.editor.querySelectorAll('.digital-page');
-        const wrapperRect = this.editorWrapper.getBoundingClientRect();
-        const wrapperCenter = wrapperRect.top + (wrapperRect.height / 2);
-        
-        pages.forEach(page => {
-            page.classList.remove('current-page');
-            
-            const pageRect = page.getBoundingClientRect();
-            const pageCenter = pageRect.top + (pageRect.height / 2);
-            
-            // Check if page center is within viewport center ± 25%
-            if (Math.abs(pageCenter - wrapperCenter) < wrapperRect.height * 0.25) {
-                page.classList.add('current-page');
+    setupEventListeners() {
+        // Update current page on scroll
+        this.editorWrapper.addEventListener('scroll', () => {
+            if (this.isPaginationEnabled) {
+                this.updateCurrentPageIndicator();
             }
         });
+        
+        console.log('Visual pagination listeners setup');
     }
     
-    // Public method to toggle pagination (if needed)
-    togglePagination() {
+    toggleVisualPagination() {
         this.isPaginationEnabled = !this.isPaginationEnabled;
         
         if (this.isPaginationEnabled) {
-            this.enablePagination();
+            this.enableVisualPagination();
+            this.paginationToggleBtn.classList.add('active');
         } else {
-            this.disablePagination();
+            this.disableVisualPagination();
+            this.paginationToggleBtn.classList.remove('active');
         }
         
+        console.log('Visual pagination toggled:', this.isPaginationEnabled);
+    }
+    
+    enableVisualPagination() {
+        this.editorWrapper.classList.add('visual-pagination-enabled');
+        this.createPageBoundaries();
+        this.updateCurrentPageIndicator();
+        console.log('Visual page boundaries enabled');
+    }
+    
+    disableVisualPagination() {
+        this.editorWrapper.classList.remove('visual-pagination-enabled');
+        this.removePageBoundaries();
+        console.log('Visual page boundaries disabled');
+    }
+    
+    createPageBoundaries() {
+        this.removePageBoundaries(); // Clear any existing boundaries
+        
+        const contentHeight = this.editor.scrollHeight;
+        const numberOfPages = Math.ceil(contentHeight / this.pageHeight);
+        
+        // Create page boundary overlays
+        for (let i = 0; i < numberOfPages; i++) {
+            const pageBoundary = document.createElement('div');
+            pageBoundary.className = 'page-boundary-overlay';
+            pageBoundary.style.top = `${i * this.pageHeight}px`;
+            pageBoundary.dataset.pageNumber = i + 1;
+            
+            // Add page number
+            const pageNumber = document.createElement('div');
+            pageNumber.className = 'page-number-indicator';
+            pageNumber.textContent = `Page ${i + 1}`;
+            pageBoundary.appendChild(pageNumber);
+            
+            // Add writing guidelines (optional)
+            const guidelines = document.createElement('div');
+            guidelines.className = 'writing-guidelines-overlay';
+            pageBoundary.appendChild(guidelines);
+            
+            this.editor.appendChild(pageBoundary);
+            this.pageElements.push(pageBoundary);
+        }
+        
+        console.log(`Created ${numberOfPages} visual page boundaries`);
+    }
+    
+    removePageBoundaries() {
+        this.pageElements.forEach(element => element.remove());
+        this.pageElements = [];
+    }
+    
+    updateCurrentPageIndicator() {
+        const boundaries = this.editor.querySelectorAll('.page-boundary-overlay');
+        const wrapperRect = this.editorWrapper.getBoundingClientRect();
+        const wrapperCenter = wrapperRect.top + (wrapperRect.height / 2);
+        
+        boundaries.forEach(boundary => {
+            boundary.classList.remove('current-page');
+            
+            const boundaryRect = boundary.getBoundingClientRect();
+            const boundaryCenter = boundaryRect.top + (boundaryRect.height / 2);
+            
+            // Check if this boundary is currently in view
+            if (Math.abs(boundaryCenter - wrapperCenter) < wrapperRect.height * 0.3) {
+                boundary.classList.add('current-page');
+            }
+        });
+    }
+    
+    // Public method to check if pagination is enabled
+    isEnabled() {
         return this.isPaginationEnabled;
     }
 }
 
-// Auto-initialize when DOM is ready
+// Initialize when DOM is ready - but don't auto-enable
 if (typeof window !== 'undefined') {
     window.PageForgePagination = PageForgePagination;
     
     document.addEventListener('DOMContentLoaded', () => {
         const editor = document.getElementById('editor');
         if (editor) {
-            // Enable auto-pagination by default
+            // Create instance but don't enable by default
             window.pageForgePagination = new PageForgePagination(editor);
-            console.log('Auto Pagination ready - pages created automatically');
+            console.log('Visual Pagination ready - click the grid button to enable');
         }
     });
 }
