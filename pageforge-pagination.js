@@ -9,7 +9,6 @@ class PageForgePagination {
         this.isPaginationEnabled = false;
         this.pageElements = [];
         this.originalContent = '';
-        this.pageBreaks = new Set();
         
         // A4 dimensions in pixels at 96 DPI
         this.pageWidth = 816;
@@ -104,7 +103,6 @@ class PageForgePagination {
             .pagination-enabled .page-content {
                 padding: ${this.pageMargin}px;
                 min-height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
-                height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
                 overflow: hidden;
                 position: relative;
             }
@@ -120,91 +118,6 @@ class PageForgePagination {
             
             .dark .page-number {
                 color: #9ca3af;
-            }
-            
-            /* Enhanced Writing Features */
-            .word-count-popup {
-                position: absolute;
-                background: #1f2937;
-                color: white;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-size: 12px;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                pointer-events: none;
-                transform: translateY(-100%);
-                margin-top: -8px;
-            }
-            
-            .word-count-popup::after {
-                content: '';
-                position: absolute;
-                bottom: -4px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #1f2937;
-            }
-            
-            /* Focus Mode */
-            .focus-mode {
-                background: #fef3c7 !important;
-                transition: background-color 0.3s ease;
-            }
-            
-            .dark .focus-mode {
-                background: #78350f !important;
-            }
-            
-            /* Reading Mode */
-            .reading-mode {
-                max-width: 800px;
-                margin: 0 auto;
-                line-height: 1.8;
-                font-size: 18px;
-            }
-            
-            .reading-mode h1 {
-                font-size: 2.5rem;
-                margin-bottom: 2rem;
-            }
-            
-            .reading-mode h2 {
-                font-size: 2rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .reading-mode h3 {
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
-            }
-            
-            /* Table Styles */
-            .editor-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1rem 0;
-            }
-            
-            .editor-table td, .editor-table th {
-                border: 1px solid #d1d5db;
-                padding: 8px 12px;
-                text-align: left;
-            }
-            
-            .editor-table th {
-                background: #f3f4f6;
-                font-weight: 600;
-            }
-            
-            .dark .editor-table td, .dark .editor-table th {
-                border-color: #4b5563;
-            }
-            
-            .dark .editor-table th {
-                background: #374151;
             }
         `;
         document.head.appendChild(style);
@@ -251,61 +164,6 @@ class PageForgePagination {
         `;
         paginationBtn.addEventListener('click', () => this.togglePagination());
         toolbar.appendChild(paginationBtn);
-        
-        // Add to Tools menu
-        this.addMenuItems();
-    }
-    
-    addMenuItems() {
-        const toolsMenu = document.querySelector('[data-menu]');
-        if (!toolsMenu) {
-            console.warn('Tools menu not found');
-            return;
-        }
-        
-        const dropdown = toolsMenu.querySelector('.menu-dropdown');
-        if (!dropdown) {
-            console.warn('Menu dropdown not found');
-            return;
-        }
-        
-        // Check if items already exist
-        if (dropdown.querySelector('.focus-mode-item')) {
-            return;
-        }
-        
-        // Add separator
-        const separator = document.createElement('hr');
-        separator.className = 'my-1 border-gray-200 dark:border-gray-700';
-        dropdown.appendChild(separator);
-        
-        // Focus Mode
-        const focusModeItem = this.createMenuItem('Focus Mode', 'M9 4v16m6-16v16M4 12h16', () => this.toggleFocusMode());
-        focusModeItem.classList.add('focus-mode-item');
-        dropdown.appendChild(focusModeItem);
-        
-        // Reading Mode
-        const readingModeItem = this.createMenuItem('Reading Mode', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', () => this.toggleReadingMode());
-        readingModeItem.classList.add('reading-mode-item');
-        dropdown.appendChild(readingModeItem);
-        
-        // Insert Table
-        const tableItem = this.createMenuItem('Insert Table', 'M4 6h16M4 10h16M4 14h16M4 18h16', () => this.insertTable());
-        tableItem.classList.add('table-item');
-        dropdown.appendChild(tableItem);
-    }
-    
-    createMenuItem(text, pathD, onClick) {
-        const item = document.createElement('button');
-        item.className = 'menu-item';
-        item.innerHTML = `
-            <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${pathD}"></path>
-            </svg>
-            <span>${text}</span>
-        `;
-        item.addEventListener('click', onClick);
-        return item;
     }
     
     setupEventListeners() {
@@ -392,6 +250,8 @@ class PageForgePagination {
         const content = this.originalContent;
         const pages = this.splitContentIntoPages(content);
         
+        console.log('Creating page view with', pages.length, 'pages');
+        
         this.editor.innerHTML = '';
         this.pageElements = [];
         
@@ -413,81 +273,102 @@ class PageForgePagination {
             
             this.pageElements.push(pageContainer);
         });
-        
-        console.log(`Created ${pages.length} pages`);
     }
     
     splitContentIntoPages(content) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
+        console.log('Splitting content into pages...');
+        
+        // Create a temporary container to parse the HTML
+        const tempContainer = document.createElement('div');
+        tempContainer.innerHTML = content;
         
         const pages = [];
-        let currentPageContent = '';
+        let currentPageContent = [];
+        let currentHeight = 0;
+        const maxPageHeight = this.pageHeight - (this.pageMargin * 2);
         
-        // First, split by manual page breaks
-        const nodes = Array.from(tempDiv.childNodes);
-        let currentPageNodes = [];
+        // Get all child nodes
+        const nodes = Array.from(tempContainer.childNodes);
         
-        for (const node of nodes) {
-            if (node.nodeType === Node.ELEMENT_NODE && 
-                (node.classList?.contains('page-break') || node.dataset?.pageBreak === 'true')) {
-                // Manual page break - push current page and start new one
-                if (currentPageNodes.length > 0) {
-                    pages.push(this.nodesToHtml(currentPageNodes));
-                    currentPageNodes = [];
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            
+            // Check if this is a page break
+            if (this.isPageBreak(node)) {
+                // If we have content in the current page, push it
+                if (currentPageContent.length > 0) {
+                    pages.push(currentPageContent.map(n => n.outerHTML || n.textContent).join(''));
+                    currentPageContent = [];
+                    currentHeight = 0;
                 }
-                continue;
+                continue; // Skip the page break element itself
             }
             
-            currentPageNodes.push(node);
+            // Calculate the height of this node
+            const nodeHeight = this.calculateNodeHeight(node);
             
-            // Check if we've reached the content limit for a page
-            const testHtml = this.nodesToHtml(currentPageNodes);
-            if (this.getContentHeight(testHtml) > (this.pageHeight - (this.pageMargin * 2))) {
-                // Remove the last node and start a new page with it
-                const lastNode = currentPageNodes.pop();
-                if (currentPageNodes.length > 0) {
-                    pages.push(this.nodesToHtml(currentPageNodes));
-                }
-                currentPageNodes = [lastNode];
+            // Check if adding this node would exceed the page height
+            if (currentHeight + nodeHeight > maxPageHeight && currentPageContent.length > 0) {
+                // Start a new page
+                pages.push(currentPageContent.map(n => n.outerHTML || n.textContent).join(''));
+                currentPageContent = [node];
+                currentHeight = nodeHeight;
+            } else {
+                // Add to current page
+                currentPageContent.push(node);
+                currentHeight += nodeHeight;
             }
         }
         
-        // Add the last page
-        if (currentPageNodes.length > 0) {
-            pages.push(this.nodesToHtml(currentPageNodes));
+        // Add the last page if it has content
+        if (currentPageContent.length > 0) {
+            pages.push(currentPageContent.map(n => n.outerHTML || n.textContent).join(''));
         }
         
-        // Ensure we have at least one page
+        // If no pages were created (empty content), create one empty page
         if (pages.length === 0) {
-            pages.push(content);
+            pages.push('<p></p>');
         }
         
+        console.log('Created', pages.length, 'pages');
         return pages;
     }
     
-    nodesToHtml(nodes) {
-        return nodes.map(node => node.outerHTML || node.textContent).join('');
+    isPageBreak(node) {
+        return node.nodeType === Node.ELEMENT_NODE && 
+               (node.classList?.contains('page-break') || node.dataset?.pageBreak === 'true');
     }
     
-    getContentHeight(html) {
-        const measure = document.createElement('div');
-        measure.style.cssText = `
-            position: absolute;
-            left: -9999px;
-            top: -9999px;
-            width: ${this.pageWidth - (this.pageMargin * 2)}px;
-            padding: ${this.pageMargin}px;
-            font-size: 14px;
-            line-height: ${this.lineHeight};
-            visibility: hidden;
-            z-index: -9999;
-        `;
-        measure.innerHTML = html;
-        document.body.appendChild(measure);
-        const height = measure.offsetHeight;
-        document.body.removeChild(measure);
-        return height;
+    calculateNodeHeight(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            // For text nodes, estimate height based on character count
+            const text = node.textContent || '';
+            const lines = Math.ceil(text.length / 80); // Rough estimate: 80 chars per line
+            const lineHeight = 20; // Approximate line height in pixels
+            return lines * lineHeight;
+        }
+        
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            // Create a temporary element to measure height
+            const temp = document.createElement('div');
+            temp.style.cssText = `
+                position: absolute;
+                left: -9999px;
+                top: -9999px;
+                width: ${this.pageWidth - (this.pageMargin * 2)}px;
+                padding: ${this.pageMargin}px;
+                font-size: 14px;
+                line-height: ${this.lineHeight};
+                visibility: hidden;
+            `;
+            temp.innerHTML = node.outerHTML;
+            document.body.appendChild(temp);
+            const height = temp.offsetHeight;
+            document.body.removeChild(temp);
+            return height;
+        }
+        
+        return 0;
     }
     
     removePagination() {
@@ -508,86 +389,14 @@ class PageForgePagination {
         // Convert page breaks to CSS page breaks for print
         content = content.replace(/<div class="page-break"[^>]*><\/div>/g, '<div style="page-break-after: always;"></div>');
         
-        // Also add automatic page breaks based on content
-        const printContent = this.splitContentIntoPages(content).join('<div style="page-break-after: always;"></div>');
-        
-        return printContent;
+        return content;
     }
     
-    toggleFocusMode() {
-        this.editor.classList.toggle('focus-mode');
-        
-        if (this.editor.classList.contains('focus-mode')) {
-            // Fade out other elements
-            document.querySelectorAll('#editor > *:not(.focus-mode)').forEach(el => {
-                if (el !== this.editor) {
-                    el.style.opacity = '0.3';
-                    el.style.transition = 'opacity 0.3s ease';
-                }
-            });
-        } else {
-            // Restore opacity
-            document.querySelectorAll('#editor > *').forEach(el => {
-                el.style.opacity = '1';
-            });
+    updatePagination() {
+        if (this.isPaginationEnabled) {
+            this.originalContent = this.editor.innerHTML;
+            this.createPageView();
         }
-    }
-    
-    toggleReadingMode() {
-        this.editor.classList.toggle('reading-mode');
-    }
-    
-    insertTable() {
-        const tableHtml = `
-            <table class="editor-table" contenteditable="true">
-                <thead>
-                    <tr>
-                        <th>Header 1</th>
-                        <th>Header 2</th>
-                        <th>Header 3</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Cell 1</td>
-                        <td>Cell 2</td>
-                        <td>Cell 3</td>
-                    </tr>
-                    <tr>
-                        <td>Cell 4</td>
-                        <td>Cell 5</td>
-                        <td>Cell 6</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p><br></p>
-        `;
-        
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-        
-        const range = selection.getRangeAt(0);
-        range.insertNode(document.createRange().createContextualFragment(tableHtml));
-        this.editor.focus();
-    }
-    
-    // Enhanced word count with detailed statistics
-    getDetailedWordCount() {
-        const text = this.editor.innerText || '';
-        const words = text.trim().split(/\s+/).filter(Boolean);
-        const characters = text.length;
-        const charactersNoSpaces = text.replace(/\s/g, '').length;
-        const paragraphs = this.editor.querySelectorAll('p').length;
-        const headings = this.editor.querySelectorAll('h1, h2, h3').length;
-        
-        return {
-            words: words.length,
-            characters: characters,
-            charactersNoSpaces: charactersNoSpaces,
-            paragraphs: paragraphs,
-            headings: headings,
-            readingTime: Math.ceil(words.length / 200) // 200 wpm
-        };
     }
 }
 
@@ -603,9 +412,6 @@ function initializePageForgePagination(retryCount = 0) {
             console.log('PageForge Pagination: Elements found, initializing...');
             window.pageForgePagination = new PageForgePagination(editor, editorWrapper);
             console.log('PageForge Pagination initialized successfully!');
-            
-            // Override the print functionality to use paginated content
-            overridePrintFunctionality();
         } else {
             if (retryCount < maxRetries) {
                 console.log(`PageForge Pagination: Elements not found, retrying in ${100 * (retryCount + 1)}ms... (${retryCount + 1}/${maxRetries})`);
@@ -620,54 +426,6 @@ function initializePageForgePagination(retryCount = 0) {
             setTimeout(() => initializePageForgePagination(retryCount + 1), 100 * (retryCount + 1));
         }
     }
-}
-
-// Override the print functionality to use proper page breaks
-function overridePrintFunctionality() {
-    const originalPrint = window.print;
-    
-    window.print = function() {
-        if (window.pageForgePagination) {
-            // Create a print-friendly version with proper page breaks
-            const title = document.getElementById('document-title')?.value || 'Document';
-            const content = window.pageForgePagination.getContentForPrint();
-            
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>${title}</title>
-                    <style>
-                        body {
-                            font-family: 'Inter', sans-serif;
-                            margin: 0;
-                            padding: 0;
-                        }
-                        .page-break {
-                            page-break-after: always;
-                        }
-                        @media print {
-                            body {
-                                margin: 0;
-                                padding: 0;
-                            }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${content}
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
-        } else {
-            originalPrint();
-        }
-    };
 }
 
 // Wait for DOM to be ready with multiple fallbacks
