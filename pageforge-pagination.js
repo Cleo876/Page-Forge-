@@ -1,6 +1,6 @@
 // PageForge Pagination & Enhanced Features Module
 // Filename: pageforge-pagination.js
-// Purpose: Adds page breaks, pagination view, and professional writing features
+// Purpose: Adds automatic page breaks and visual page canvas
 
 class PageForgePagination {
     constructor(editor) {
@@ -8,6 +8,7 @@ class PageForgePagination {
         this.editorWrapper = document.getElementById('editor-wrapper');
         this.isPaginationEnabled = false;
         this.pageElements = [];
+        this.originalContent = '';
         
         // A4 dimensions in pixels at 96 DPI
         this.pageWidth = 816;
@@ -22,6 +23,11 @@ class PageForgePagination {
         this.addToolbarButtons();
         this.setupEventListeners();
         console.log('PageForgePagination initialized');
+        
+        // Enable pagination by default
+        setTimeout(() => {
+            this.enablePagination();
+        }, 1000);
     }
     
     setupStyles() {
@@ -31,72 +37,89 @@ class PageForgePagination {
         const style = document.createElement('style');
         style.id = 'pagination-styles';
         style.textContent = `
-            /* Page Break Styles */
-            .page-break {
-                page-break-after: always;
-                break-after: page;
-                display: block;
-                height: 0;
-                margin: 20px 0;
-                border-top: 2px dashed #cbd5e1;
+            /* Automatic Page Canvas Styles */
+            .page-canvas-enabled #editor {
                 position: relative;
-                text-align: center;
+                background: linear-gradient(to bottom, 
+                    white 0%, white calc(100% - 2px),
+                    transparent calc(100% - 2px), transparent 100%);
+                background-size: 100% ${this.pageHeight}px;
+                background-repeat: repeat-y;
+                box-shadow: none !important;
+                min-height: auto !important;
+                padding: 0 !important;
+                margin-bottom: 32px;
             }
             
-            .page-break::after {
-                content: "Page Break";
+            .dark .page-canvas-enabled #editor {
+                background: linear-gradient(to bottom, 
+                    #1f2937 0%, #1f2937 calc(100% - 2px),
+                    transparent calc(100% - 2px), transparent 100%);
+                background-size: 100% ${this.pageHeight}px;
+                background-repeat: repeat-y;
+            }
+            
+            /* Page boundaries */
+            .page-boundary {
                 position: absolute;
-                top: -10px;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(90deg, 
+                    transparent 0%, 
+                    #e5e7eb 20%, 
+                    #e5e7eb 80%, 
+                    transparent 100%);
+                pointer-events: none;
+                z-index: 5;
+            }
+            
+            .dark .page-boundary {
+                background: linear-gradient(90deg, 
+                    transparent 0%, 
+                    #4b5563 20%, 
+                    #4b5563 80%, 
+                    transparent 100%);
+            }
+            
+            .page-boundary::after {
+                content: "Page End";
+                position: absolute;
+                top: -20px;
                 left: 50%;
                 transform: translateX(-50%);
                 background: white;
-                padding: 0 10px;
-                font-size: 12px;
-                color: #64748b;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 10px;
+                color: #6b7280;
                 font-weight: 500;
+                border: 1px solid #e5e7eb;
             }
             
-            .dark .page-break {
-                border-top-color: #475569;
+            .dark .page-boundary::after {
+                background: #374151;
+                color: #9ca3af;
+                border-color: #4b5563;
             }
             
-            .dark .page-break::after {
-                background: #1e293b;
-                color: #94a3b8;
-            }
-            
-            /* Pagination View */
-            .pagination-enabled #editor {
-                box-shadow: none !important;
-                min-height: auto !important;
-                margin-bottom: 32px;
-                background: transparent !important;
-                width: 100% !important;
-                padding: 0 !important;
-            }
-            
-            .page-container {
-                background: white;
-                width: ${this.pageWidth}px;
-                min-height: ${this.pageHeight}px;
-                margin: 0 auto 32px auto;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            /* Page content wrapper */
+            .page-content-wrapper {
                 position: relative;
-                page-break-after: always;
-                break-after: page;
+                min-height: ${this.pageHeight}px;
+                padding: ${this.pageMargin}px;
+                margin-bottom: 32px;
+                background: white;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+                break-inside: avoid;
             }
             
-            .dark .page-container {
+            .dark .page-content-wrapper {
                 background: #1f2937;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             }
             
-            .page-content {
-                padding: ${this.pageMargin}px;
-                min-height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
-                overflow: hidden;
-            }
-            
+            /* Page number */
             .page-number {
                 position: absolute;
                 bottom: 20px;
@@ -110,100 +133,79 @@ class PageForgePagination {
                 color: #9ca3af;
             }
             
-            /* Enhanced Writing Features */
-            .word-count-popup {
+            /* Current page highlight */
+            .current-page {
+                box-shadow: 0 0 0 2px #4f46e5 !important;
+            }
+            
+            /* Manual page break styles */
+            .manual-page-break {
+                height: 40px;
+                margin: 20px 0;
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .manual-page-break::before {
+                content: "";
                 position: absolute;
-                background: #1f2937;
-                color: white;
-                padding: 8px 12px;
+                top: 50%;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(90deg, 
+                    transparent 0%, 
+                    #dc2626 20%, 
+                    #dc2626 80%, 
+                    transparent 100%);
+            }
+            
+            .manual-page-break::after {
+                content: "Manual Page Break";
+                position: absolute;
+                background: white;
+                padding: 4px 12px;
                 border-radius: 6px;
                 font-size: 12px;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                pointer-events: none;
-                transform: translateY(-100%);
-                margin-top: -8px;
+                color: #dc2626;
+                font-weight: 500;
+                border: 1px solid #dc2626;
             }
             
-            .word-count-popup::after {
-                content: '';
+            .dark .manual-page-break::after {
+                background: #1f2937;
+                color: #f87171;
+                border-color: #f87171;
+            }
+            
+            /* Writing area indicator */
+            .writing-area {
                 position: absolute;
-                bottom: -4px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #1f2937;
+                top: ${this.pageMargin}px;
+                bottom: ${this.pageMargin}px;
+                left: ${this.pageMargin}px;
+                right: ${this.pageMargin}px;
+                border: 1px dashed #e5e7eb;
+                pointer-events: none;
+                z-index: 1;
+                opacity: 0.3;
             }
             
-            /* Focus Mode */
-            .focus-mode {
-                background: #fef3c7 !important;
-                transition: background-color 0.3s ease;
-            }
-            
-            .dark .focus-mode {
-                background: #78350f !important;
-            }
-            
-            /* Reading Mode */
-            .reading-mode {
-                max-width: 800px;
-                margin: 0 auto;
-                line-height: 1.8;
-                font-size: 18px;
-            }
-            
-            .reading-mode h1 {
-                font-size: 2.5rem;
-                margin-bottom: 2rem;
-            }
-            
-            .reading-mode h2 {
-                font-size: 2rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .reading-mode h3 {
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
-            }
-            
-            /* Table Styles */
-            .editor-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1rem 0;
-            }
-            
-            .editor-table td, .editor-table th {
-                border: 1px solid #d1d5db;
-                padding: 8px 12px;
-                text-align: left;
-            }
-            
-            .editor-table th {
-                background: #f3f4f6;
-                font-weight: 600;
-            }
-            
-            .dark .editor-table td, .dark .editor-table th {
+            .dark .writing-area {
                 border-color: #4b5563;
             }
             
-            .dark .editor-table th {
-                background: #374151;
-            }
-
-            /* Auto page break indicator */
-            .auto-page-break {
-                border-top: 1px dotted #e5e7eb;
-                margin: 10px 0;
-                opacity: 0.5;
+            /* Toolbar button active state */
+            .toolbar-btn.active {
+                background-color: #dbeafe;
+                color: #1d4ed8;
             }
             
-            .dark .auto-page-break {
-                border-top-color: #4b5563;
+            .dark .toolbar-btn.active {
+                background-color: #1e3a8a;
+                color: #93c5fd;
             }
         `;
         document.head.appendChild(style);
@@ -221,106 +223,275 @@ class PageForgePagination {
         separator.className = 'h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2';
         toolbar.appendChild(separator);
         
-        // Page Break Button
+        // Page Canvas Toggle Button
+        this.pageCanvasBtn = document.createElement('button');
+        this.pageCanvasBtn.className = 'toolbar-btn';
+        this.pageCanvasBtn.title = 'Toggle Page Canvas (Auto Pagination)';
+        this.pageCanvasBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+        `;
+        this.pageCanvasBtn.addEventListener('click', () => this.togglePageCanvas());
+        toolbar.appendChild(this.pageCanvasBtn);
+        
+        // Manual Page Break Button
         const pageBreakBtn = document.createElement('button');
         pageBreakBtn.className = 'toolbar-btn';
-        pageBreakBtn.title = 'Insert Page Break (Ctrl+Enter)';
+        pageBreakBtn.title = 'Insert Manual Page Break (Ctrl+Enter)';
         pageBreakBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
             </svg>
         `;
-        pageBreakBtn.addEventListener('click', () => this.insertPageBreak());
+        pageBreakBtn.addEventListener('click', () => this.insertManualPageBreak());
         toolbar.appendChild(pageBreakBtn);
-        
-        // Pagination Toggle Button
-        const paginationBtn = document.createElement('button');
-        paginationBtn.className = 'toolbar-btn';
-        paginationBtn.title = 'Toggle Pagination View';
-        paginationBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-            </svg>
-        `;
-        paginationBtn.addEventListener('click', () => this.togglePagination());
-        toolbar.appendChild(paginationBtn);
-        
-        // Add to Tools menu
-        this.addMenuItems();
         
         console.log('Pagination buttons added to toolbar');
     }
     
-    addMenuItems() {
-        // Find the Tools menu by looking for the button with text "Tools"
-        const menuButtons = document.querySelectorAll('[data-menu] .menu-btn');
-        let toolsMenu = null;
-        
-        menuButtons.forEach(btn => {
-            if (btn.textContent.trim() === 'Tools') {
-                toolsMenu = btn.closest('[data-menu]');
-            }
-        });
-        
-        if (!toolsMenu) {
-            console.log('Tools menu not found');
-            return;
-        }
-        
-        const dropdown = toolsMenu.querySelector('.menu-dropdown');
-        if (!dropdown) {
-            console.log('Tools dropdown not found');
-            return;
-        }
-        
-        // Add separator
-        const separator = document.createElement('hr');
-        separator.className = 'my-1 border-gray-200 dark:border-gray-700';
-        dropdown.appendChild(separator);
-        
-        // Focus Mode
-        const focusModeItem = this.createMenuItem('Focus Mode', 'M9 4v16m6-16v16M4 12h16', () => this.toggleFocusMode());
-        dropdown.appendChild(focusModeItem);
-        
-        // Reading Mode
-        const readingModeItem = this.createMenuItem('Reading Mode', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', () => this.toggleReadingMode());
-        dropdown.appendChild(readingModeItem);
-        
-        // Insert Table
-        const tableItem = this.createMenuItem('Insert Table', 'M4 6h16M4 10h16M4 14h16M4 18h16', () => this.insertTable());
-        dropdown.appendChild(tableItem);
-        
-        console.log('Pagination menu items added');
-    }
-    
-    createMenuItem(text, pathD, onClick) {
-        const item = document.createElement('button');
-        item.className = 'menu-item';
-        item.innerHTML = `
-            <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${pathD}"></path>
-            </svg>
-            <span>${text}</span>
-        `;
-        item.addEventListener('click', onClick);
-        return item;
-    }
-    
     setupEventListeners() {
-        // Keyboard shortcut for page break
+        // Keyboard shortcut for manual page break
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
-                this.insertPageBreak();
+                this.insertManualPageBreak();
             }
+        });
+        
+        // Update page boundaries on scroll to show current page
+        this.editorWrapper.addEventListener('scroll', () => {
+            this.updateCurrentPageIndicator();
+        });
+        
+        // Update page boundaries when content changes
+        const observer = new MutationObserver(() => {
+            if (this.isPaginationEnabled) {
+                setTimeout(() => this.updatePageBoundaries(), 100);
+            }
+        });
+        
+        observer.observe(this.editor, {
+            childList: true,
+            subtree: true,
+            characterData: true
         });
         
         console.log('Pagination event listeners set up');
     }
     
-    insertPageBreak() {
+    togglePageCanvas() {
+        this.isPaginationEnabled = !this.isPaginationEnabled;
+        
+        if (this.isPaginationEnabled) {
+            this.enablePagination();
+            this.pageCanvasBtn.classList.add('active');
+        } else {
+            this.disablePagination();
+            this.pageCanvasBtn.classList.remove('active');
+        }
+        
+        console.log('Page canvas toggled:', this.isPaginationEnabled);
+    }
+    
+    enablePagination() {
+        this.originalContent = this.editor.innerHTML;
+        this.editorWrapper.classList.add('page-canvas-enabled');
+        this.updatePageBoundaries();
+        console.log('Page canvas enabled');
+    }
+    
+    disablePagination() {
+        this.editorWrapper.classList.remove('page-canvas-enabled');
+        this.clearPageBoundaries();
+        
+        // Restore original content structure
+        if (this.originalContent) {
+            // Remove page content wrappers but keep the content
+            const pageWrappers = this.editor.querySelectorAll('.page-content-wrapper');
+            pageWrappers.forEach(wrapper => {
+                const content = wrapper.innerHTML;
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                wrapper.parentNode.replaceChild(tempDiv, wrapper);
+            });
+        }
+        
+        console.log('Page canvas disabled');
+    }
+    
+    updatePageBoundaries() {
+        this.clearPageBoundaries();
+        
+        const editorRect = this.editor.getBoundingClientRect();
+        const editorTop = this.editor.offsetTop;
+        const contentHeight = this.editor.scrollHeight;
+        const numberOfPages = Math.ceil(contentHeight / this.pageHeight);
+        
+        // Add page boundaries
+        for (let i = 1; i < numberOfPages; i++) {
+            const boundary = document.createElement('div');
+            boundary.className = 'page-boundary';
+            boundary.style.top = `${(i * this.pageHeight) - 1}px`;
+            this.editor.appendChild(boundary);
+        }
+        
+        // Wrap content in page containers
+        this.wrapContentInPages();
+        
+        // Update current page indicator
+        this.updateCurrentPageIndicator();
+        
+        console.log(`Updated page boundaries: ${numberOfPages} pages`);
+    }
+    
+    wrapContentInPages() {
+        const children = Array.from(this.editor.children).filter(child => 
+            !child.classList.contains('page-boundary') && 
+            !child.classList.contains('page-content-wrapper') &&
+            !child.classList.contains('manual-page-break')
+        );
+        
+        let currentPageHeight = 0;
+        let currentPageContent = [];
+        let pageNumber = 1;
+        
+        children.forEach((child, index) => {
+            const childHeight = this.estimateElementHeight(child);
+            
+            // Check if this is a manual page break
+            if (child.classList.contains('manual-page-break')) {
+                // Create page with current content
+                if (currentPageContent.length > 0) {
+                    this.createPageWrapper(currentPageContent, pageNumber);
+                    pageNumber++;
+                    currentPageContent = [];
+                    currentPageHeight = 0;
+                }
+                return;
+            }
+            
+            // Check if adding this element would exceed page height
+            if (currentPageHeight + childHeight > this.pageHeight - (this.pageMargin * 2) && currentPageContent.length > 0) {
+                // Create new page
+                this.createPageWrapper(currentPageContent, pageNumber);
+                pageNumber++;
+                currentPageContent = [child];
+                currentPageHeight = childHeight;
+            } else {
+                // Add to current page
+                currentPageContent.push(child);
+                currentPageHeight += childHeight;
+            }
+            
+            // If this is the last element, create the final page
+            if (index === children.length - 1 && currentPageContent.length > 0) {
+                this.createPageWrapper(currentPageContent, pageNumber);
+            }
+        });
+        
+        // Remove original children that have been wrapped
+        children.forEach(child => {
+            if (child.parentNode === this.editor && 
+                !child.classList.contains('page-boundary') &&
+                !child.classList.contains('manual-page-break')) {
+                child.remove();
+            }
+        });
+    }
+    
+    createPageWrapper(elements, pageNumber) {
+        const pageWrapper = document.createElement('div');
+        pageWrapper.className = 'page-content-wrapper';
+        pageWrapper.dataset.pageNumber = pageNumber;
+        
+        // Add writing area indicator
+        const writingArea = document.createElement('div');
+        writingArea.className = 'writing-area';
+        pageWrapper.appendChild(writingArea);
+        
+        // Add page number
+        const pageNumberEl = document.createElement('div');
+        pageNumberEl.className = 'page-number';
+        pageNumberEl.textContent = `Page ${pageNumber}`;
+        pageWrapper.appendChild(pageNumberEl);
+        
+        // Add content elements
+        elements.forEach(element => {
+            pageWrapper.appendChild(element);
+        });
+        
+        this.editor.appendChild(pageWrapper);
+    }
+    
+    estimateElementHeight(element) {
+        // Simple height estimation based on element type and content
+        const tagName = element.tagName.toLowerCase();
+        const textContent = element.textContent || '';
+        
+        switch(tagName) {
+            case 'h1':
+                return 80;
+            case 'h2':
+                return 60;
+            case 'h3':
+                return 45;
+            case 'p':
+                const lines = Math.ceil(textContent.length / 80); // ~80 chars per line
+                return Math.max(30, lines * 24);
+            case 'ul':
+            case 'ol':
+                const items = element.querySelectorAll('li').length;
+                return Math.max(40, items * 30);
+            case 'blockquote':
+                return 80;
+            default:
+                return 40;
+        }
+    }
+    
+    clearPageBoundaries() {
+        const boundaries = this.editor.querySelectorAll('.page-boundary');
+        boundaries.forEach(boundary => boundary.remove());
+        
+        const pageWrappers = this.editor.querySelectorAll('.page-content-wrapper');
+        pageWrappers.forEach(wrapper => {
+            // Extract content from wrapper before removing it
+            const content = Array.from(wrapper.children).filter(child => 
+                !child.classList.contains('writing-area') && 
+                !child.classList.contains('page-number')
+            );
+            
+            content.forEach(child => {
+                this.editor.appendChild(child);
+            });
+            
+            wrapper.remove();
+        });
+    }
+    
+    updateCurrentPageIndicator() {
+        const pageWrappers = this.editor.querySelectorAll('.page-content-wrapper');
+        const editorRect = this.editor.getBoundingClientRect();
+        const wrapperRect = this.editorWrapper.getBoundingClientRect();
+        
+        pageWrappers.forEach(wrapper => {
+            wrapper.classList.remove('current-page');
+            
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const wrapperTop = wrapperRect.top - editorRect.top;
+            const wrapperBottom = wrapperRect.bottom - editorRect.top;
+            
+            // Check if this page is currently in view
+            if (wrapperTop <= wrapperRect.height / 2 && wrapperBottom >= wrapperRect.height / 2) {
+                wrapper.classList.add('current-page');
+            }
+        });
+    }
+    
+    insertManualPageBreak() {
         const pageBreak = document.createElement('div');
-        pageBreak.className = 'page-break';
+        pageBreak.className = 'manual-page-break';
         pageBreak.contentEditable = 'false';
         
         const selection = window.getSelection();
@@ -329,198 +500,26 @@ class PageForgePagination {
         const range = selection.getRangeAt(0);
         range.insertNode(pageBreak);
         
-        // Add a paragraph after the page break for continued writing
-        const newParagraph = document.createElement('p');
-        newParagraph.innerHTML = '<br>';
-        pageBreak.parentNode.insertBefore(newParagraph, pageBreak.nextSibling);
+        // Add space after the page break
+        const spacer = document.createElement('p');
+        spacer.innerHTML = '<br>';
+        pageBreak.parentNode.insertBefore(spacer, pageBreak.nextSibling);
         
-        // Move cursor to the new paragraph
+        // Move cursor after the page break
         const newRange = document.createRange();
-        newRange.setStart(newParagraph, 0);
+        newRange.setStartAfter(spacer);
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
         
         this.editor.focus();
         
-        console.log('Page break inserted');
-    }
-    
-    togglePagination() {
-        this.isPaginationEnabled = !this.isPaginationEnabled;
-        
-        if (this.editorWrapper) {
-            this.editorWrapper.classList.toggle('pagination-enabled', this.isPaginationEnabled);
-        }
-        
+        // Update page boundaries
         if (this.isPaginationEnabled) {
-            this.enablePagination();
-        } else {
-            this.disablePagination();
+            this.updatePageBoundaries();
         }
         
-        console.log('Pagination toggled:', this.isPaginationEnabled);
-    }
-    
-    enablePagination() {
-        // Store original content
-        this.originalContent = this.editor.innerHTML;
-        
-        // Apply automatic page breaks based on content
-        this.applyAutomaticPageBreaks();
-    }
-    
-    disablePagination() {
-        // Restore original content
-        if (this.originalContent) {
-            this.editor.innerHTML = this.originalContent;
-        }
-        
-        // Remove any page containers
-        const pageContainers = this.editor.querySelectorAll('.page-container');
-        pageContainers.forEach(container => container.remove());
-    }
-    
-    applyAutomaticPageBreaks() {
-        const content = this.editor.innerHTML;
-        
-        // Simple character-based page breaking
-        // A4 page can hold approximately 3000-4000 characters
-        const charsPerPage = 3500;
-        
-        if (content.length > charsPerPage) {
-            // Split content into pages based on character count
-            const pages = [];
-            let remainingContent = content;
-            
-            while (remainingContent.length > 0) {
-                // Find a good breaking point (end of paragraph or heading)
-                const breakPoint = this.findGoodBreakPoint(remainingContent, charsPerPage);
-                const pageContent = remainingContent.substring(0, breakPoint);
-                const nextContent = remainingContent.substring(breakPoint);
-                
-                pages.push(pageContent);
-                remainingContent = nextContent;
-            }
-            
-            // Render pages
-            this.renderPages(pages);
-        } else {
-            // Single page
-            this.renderPages([content]);
-        }
-    }
-    
-    findGoodBreakPoint(content, targetLength) {
-        if (content.length <= targetLength) {
-            return content.length;
-        }
-        
-        // Look for paragraph endings, heading tags, or natural breaks
-        const breakPoints = [
-            content.lastIndexOf('</p>', targetLength),
-            content.lastIndexOf('</h1>', targetLength),
-            content.lastIndexOf('</h2>', targetLength),
-            content.lastIndexOf('</h3>', targetLength),
-            content.lastIndexOf('</div>', targetLength),
-            content.lastIndexOf('<br>', targetLength),
-            content.lastIndexOf(' ', targetLength)
-        ];
-        
-        // Find the best break point
-        for (const point of breakPoints) {
-            if (point > targetLength * 0.7 && point < targetLength * 1.3) {
-                return point;
-            }
-        }
-        
-        // Default to target length
-        return Math.min(targetLength, content.length);
-    }
-    
-    renderPages(pages) {
-        this.editor.innerHTML = '';
-        
-        pages.forEach((pageContent, index) => {
-            const pageContainer = document.createElement('div');
-            pageContainer.className = 'page-container';
-            
-            const pageContentDiv = document.createElement('div');
-            pageContentDiv.className = 'page-content';
-            pageContentDiv.innerHTML = pageContent;
-            
-            const pageNumber = document.createElement('div');
-            pageNumber.className = 'page-number';
-            pageNumber.textContent = `Page ${index + 1}`;
-            
-            pageContainer.appendChild(pageContentDiv);
-            pageContainer.appendChild(pageNumber);
-            this.editor.appendChild(pageContainer);
-            
-            this.pageElements.push(pageContainer);
-        });
-        
-        console.log(`Rendered ${pages.length} pages`);
-    }
-    
-    toggleFocusMode() {
-        this.editor.classList.toggle('focus-mode');
-        
-        if (this.editor.classList.contains('focus-mode')) {
-            // Fade out other elements
-            document.querySelectorAll('#app-container > *:not(#editor)').forEach(el => {
-                el.style.opacity = '0.3';
-                el.style.transition = 'opacity 0.3s ease';
-            });
-        } else {
-            // Restore opacity
-            document.querySelectorAll('#app-container > *').forEach(el => {
-                el.style.opacity = '1';
-            });
-        }
-        
-        console.log('Focus mode toggled');
-    }
-    
-    toggleReadingMode() {
-        this.editor.classList.toggle('reading-mode');
-        console.log('Reading mode toggled');
-    }
-    
-    insertTable() {
-        const tableHtml = `
-            <table class="editor-table" contenteditable="true">
-                <thead>
-                    <tr>
-                        <th>Header 1</th>
-                        <th>Header 2</th>
-                        <th>Header 3</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Cell 1</td>
-                        <td>Cell 2</td>
-                        <td>Cell 3</td>
-                    </tr>
-                    <tr>
-                        <td>Cell 4</td>
-                        <td>Cell 5</td>
-                        <td>Cell 6</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p><br></p>
-        `;
-        
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-        
-        const range = selection.getRangeAt(0);
-        range.insertNode(document.createRange().createContextualFragment(tableHtml));
-        this.editor.focus();
-        
-        console.log('Table inserted');
+        console.log('Manual page break inserted');
     }
 }
 
