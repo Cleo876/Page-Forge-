@@ -1,12 +1,12 @@
-// PageForge Pagination & Enhanced Features Module
+// PageForge Visual Pagination Module
 // Filename: pageforge-pagination.js
-// Purpose: Adds page breaks, pagination view, and professional writing features
+// Purpose: Adds visual page boundaries without interfering with content
 
 class PageForgePagination {
-    constructor(editor, editorWrapper) {
+    constructor(editor) {
         this.editor = editor;
-        this.editorWrapper = editorWrapper;
-        this.isPaginationEnabled = false;
+        this.editorWrapper = document.getElementById('editor-wrapper');
+        this.isPaginationEnabled = false; // Disabled by default - user can enable
         this.pageElements = [];
         
         // A4 dimensions in pixels at 96 DPI
@@ -21,169 +21,210 @@ class PageForgePagination {
         this.setupStyles();
         this.addToolbarButtons();
         this.setupEventListeners();
+        console.log('Visual Pagination initialized (disabled by default)');
     }
     
     setupStyles() {
+        if (document.getElementById('visual-pagination-styles')) return;
+        
         const style = document.createElement('style');
+        style.id = 'visual-pagination-styles';
         style.textContent = `
-            /* Page Break Styles */
-            .page-break {
-                page-break-after: always;
-                break-after: page;
-                display: block;
-                height: 0;
-                margin: 20px 0;
-                border-top: 2px dashed #cbd5e1;
+            /* Visual Page Overlay - Non-intrusive */
+            .visual-pagination-enabled #editor {
                 position: relative;
-                text-align: center;
+                background: transparent !important;
+                /* Keep all original styles - we don't override anything important */
             }
             
-            .page-break::after {
-                content: "Page Break";
+            /* Page Boundary Overlay */
+            .page-boundary-overlay {
                 position: absolute;
-                top: -10px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: white;
-                padding: 0 10px;
-                font-size: 12px;
-                color: #64748b;
-                font-weight: 500;
-            }
-            
-            .dark .page-break {
-                border-top-color: #475569;
-            }
-            
-            .dark .page-break::after {
-                background: #1e293b;
-                color: #94a3b8;
-            }
-            
-            /* Pagination View */
-            .pagination-enabled #editor {
-                box-shadow: none;
-                min-height: auto;
-                margin-bottom: 32px;
-            }
-            
-            .page-container {
-                background: white;
                 width: ${this.pageWidth}px;
-                min-height: ${this.pageHeight}px;
-                margin: 0 auto 32px auto;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-                position: relative;
-                page-break-after: always;
-                break-after: page;
+                height: ${this.pageHeight}px;
+                pointer-events: none;
+                z-index: 5;
+                background: 
+                    /* Paper shadow effect */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(0,0,0,0.02) ${this.pageHeight - 20}px,
+                        rgba(0,0,0,0.04) ${this.pageHeight - 10}px,
+                        rgba(0,0,0,0.08) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Page border */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Left and right borders */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageMargin}px,
+                        rgba(0,0,0,0.1) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
+                border-radius: 2px;
             }
             
-            .dark .page-container {
-                background: #1f2937;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            .dark .page-boundary-overlay {
+                background: 
+                    /* Paper shadow effect for dark mode */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(255,255,255,0.02) ${this.pageHeight - 20}px,
+                        rgba(255,255,255,0.04) ${this.pageHeight - 10}px,
+                        rgba(255,255,255,0.08) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Page border for dark mode */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Left and right borders for dark mode */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageMargin}px,
+                        rgba(255,255,255,0.1) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
             }
             
-            .page-content {
-                padding: ${this.pageMargin}px;
-                min-height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
-            }
-            
-            .page-number {
+            /* Page Number Indicator */
+            .page-number-indicator {
                 position: absolute;
-                bottom: 20px;
+                bottom: ${this.pageMargin - 25}px;
                 right: ${this.pageMargin}px;
-                font-size: 12px;
+                font-size: 11px;
                 color: #6b7280;
                 font-weight: 500;
+                font-family: 'Inter', sans-serif;
+                background: rgba(255,255,255,0.9);
+                padding: 2px 6px;
+                border-radius: 3px;
+                border: 1px solid rgba(0,0,0,0.1);
             }
             
-            .dark .page-number {
+            .dark .page-number-indicator {
                 color: #9ca3af;
+                background: rgba(31, 41, 55, 0.9);
+                border: 1px solid rgba(255,255,255,0.1);
             }
             
-            /* Enhanced Writing Features */
-            .word-count-popup {
+            /* Writing Guidelines (Very Subtle) */
+            .writing-guidelines-overlay {
                 position: absolute;
-                background: #1f2937;
-                color: white;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-size: 12px;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                top: ${this.pageMargin}px;
+                bottom: ${this.pageMargin}px;
+                left: ${this.pageMargin}px;
+                right: ${this.pageMargin}px;
                 pointer-events: none;
-                transform: translateY(-100%);
-                margin-top: -8px;
+                z-index: 4;
+                opacity: 0.02;
+                background-image: 
+                    repeating-linear-gradient(
+                        to bottom,
+                        transparent,
+                        transparent 23px,
+                        #4b5563 23px,
+                        #4b5563 24px
+                    );
             }
             
-            .word-count-popup::after {
-                content: '';
-                position: absolute;
-                bottom: -4px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #1f2937;
+            .dark .writing-guidelines-overlay {
+                background-image: 
+                    repeating-linear-gradient(
+                        to bottom,
+                        transparent,
+                        transparent 23px,
+                        #e5e7eb 23px,
+                        #e5e7eb 24px
+                    );
             }
             
-            /* Focus Mode */
-            .focus-mode {
-                background: #fef3c7 !important;
-                transition: background-color 0.3s ease;
+            /* Current Page Highlight */
+            .page-boundary-overlay.current-page {
+                background: 
+                    /* Enhanced paper shadow for current page */
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(79, 70, 229, 0.05) ${this.pageHeight - 20}px,
+                        rgba(79, 70, 229, 0.1) ${this.pageHeight - 10}px,
+                        rgba(79, 70, 229, 0.15) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    /* Enhanced border for current page */
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    /* Enhanced left and right borders */
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageMargin}px,
+                        rgba(79, 70, 229, 0.3) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
             }
             
-            .dark .focus-mode {
-                background: #78350f !important;
+            .dark .page-boundary-overlay.current-page {
+                background: 
+                    linear-gradient(to bottom, 
+                        transparent 0%,
+                        rgba(99, 102, 241, 0.05) ${this.pageHeight - 20}px,
+                        rgba(99, 102, 241, 0.1) ${this.pageHeight - 10}px,
+                        rgba(99, 102, 241, 0.15) ${this.pageHeight}px,
+                        transparent ${this.pageHeight + 10}px
+                    ),
+                    linear-gradient(to bottom,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageHeight - this.pageMargin}px,
+                        transparent ${this.pageHeight - this.pageMargin}px,
+                        transparent 100%
+                    ),
+                    linear-gradient(to right,
+                        transparent 0%,
+                        transparent ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageMargin}px,
+                        rgba(99, 102, 241, 0.4) ${this.pageWidth - this.pageMargin}px,
+                        transparent ${this.pageWidth - this.pageMargin}px,
+                        transparent 100%
+                    );
             }
             
-            /* Reading Mode */
-            .reading-mode {
-                max-width: 800px;
-                margin: 0 auto;
-                line-height: 1.8;
-                font-size: 18px;
+            /* Toolbar button styling */
+            .pagination-toggle-btn.active {
+                background-color: #dbeafe !important;
+                color: #1d4ed8 !important;
             }
             
-            .reading-mode h1 {
-                font-size: 2.5rem;
-                margin-bottom: 2rem;
-            }
-            
-            .reading-mode h2 {
-                font-size: 2rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .reading-mode h3 {
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
-            }
-            
-            /* Table Styles */
-            .editor-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1rem 0;
-            }
-            
-            .editor-table td, .editor-table th {
-                border: 1px solid #d1d5db;
-                padding: 8px 12px;
-                text-align: left;
-            }
-            
-            .editor-table th {
-                background: #f3f4f6;
-                font-weight: 600;
-            }
-            
-            .dark .editor-table td, .dark .editor-table th {
-                border-color: #4b5563;
-            }
-            
-            .dark .editor-table th {
-                background: #374151;
+            .dark .pagination-toggle-btn.active {
+                background-color: #1e3a8a !important;
+                color: #93c5fd !important;
             }
         `;
         document.head.appendChild(style);
@@ -191,336 +232,144 @@ class PageForgePagination {
     
     addToolbarButtons() {
         const toolbar = document.querySelector('.flex-shrink-0.flex.items-center.gap-1.px-4.py-2');
-        if (!toolbar) return;
+        if (!toolbar) {
+            console.log('Toolbar not found');
+            return;
+        }
         
         // Add separator
         const separator = document.createElement('div');
         separator.className = 'h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2';
         toolbar.appendChild(separator);
         
-        // Page Break Button
-        const pageBreakBtn = document.createElement('button');
-        pageBreakBtn.className = 'toolbar-btn';
-        pageBreakBtn.title = 'Insert Page Break (Ctrl+Enter)';
-        pageBreakBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-            </svg>
-        `;
-        pageBreakBtn.addEventListener('click', () => this.insertPageBreak());
-        toolbar.appendChild(pageBreakBtn);
-        
-        // Pagination Toggle Button
-        const paginationBtn = document.createElement('button');
-        paginationBtn.className = 'toolbar-btn';
-        paginationBtn.title = 'Toggle Pagination View';
-        paginationBtn.innerHTML = `
+        // Visual Pagination Toggle Button
+        this.paginationToggleBtn = document.createElement('button');
+        this.paginationToggleBtn.className = 'toolbar-btn pagination-toggle-btn';
+        this.paginationToggleBtn.title = 'Toggle Page Boundaries';
+        this.paginationToggleBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
             </svg>
         `;
-        paginationBtn.addEventListener('click', () => this.togglePagination());
-        toolbar.appendChild(paginationBtn);
+        this.paginationToggleBtn.addEventListener('click', () => this.toggleVisualPagination());
+        toolbar.appendChild(this.paginationToggleBtn);
         
-        // Add to Tools menu
-        this.addMenuItems();
-    }
-    
-    addMenuItems() {
-        const toolsMenu = document.querySelector('[data-menu] button:contains("Tools")').closest('[data-menu]');
-        if (!toolsMenu) return;
-        
-        const dropdown = toolsMenu.querySelector('.menu-dropdown');
-        
-        // Add separator
-        const separator = document.createElement('hr');
-        separator.className = 'my-1 border-gray-200 dark:border-gray-700';
-        dropdown.appendChild(separator);
-        
-        // Focus Mode
-        const focusModeItem = this.createMenuItem('Focus Mode', 'M9 4v16m6-16v16M4 12h16', () => this.toggleFocusMode());
-        dropdown.appendChild(focusModeItem);
-        
-        // Reading Mode
-        const readingModeItem = this.createMenuItem('Reading Mode', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', () => this.toggleReadingMode());
-        dropdown.appendChild(readingModeItem);
-        
-        // Insert Table
-        const tableItem = this.createMenuItem('Insert Table', 'M4 6h16M4 10h16M4 14h16M4 18h16', () => this.insertTable());
-        dropdown.appendChild(tableItem);
-    }
-    
-    createMenuItem(text, pathD, onClick) {
-        const item = document.createElement('button');
-        item.className = 'menu-item';
-        item.innerHTML = `
-            <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${pathD}"></path>
-            </svg>
-            <span>${text}</span>
-        `;
-        item.addEventListener('click', onClick);
-        return item;
+        console.log('Visual pagination button added to toolbar');
     }
     
     setupEventListeners() {
-        // Keyboard shortcut for page break
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                this.insertPageBreak();
-            }
-        });
-        
-        // Update pagination on content changes
-        const observer = new MutationObserver(() => {
+        // Update current page on scroll
+        this.editorWrapper.addEventListener('scroll', () => {
             if (this.isPaginationEnabled) {
-                this.updatePagination();
+                this.updateCurrentPageIndicator();
             }
         });
         
-        observer.observe(this.editor, {
-            childList: true,
-            subtree: true,
-            characterData: true
-        });
+        console.log('Visual pagination listeners setup');
     }
     
-    insertPageBreak() {
-        const pageBreak = document.createElement('div');
-        pageBreak.className = 'page-break';
-        pageBreak.contentEditable = 'false';
-        
-        const selection = window.getSelection();
-        const range = selection.getRangeAt(0);
-        
-        range.insertNode(pageBreak);
-        
-        // Add a paragraph after the page break for continued writing
-        const newParagraph = document.createElement('p');
-        newParagraph.innerHTML = '<br>';
-        pageBreak.parentNode.insertBefore(newParagraph, pageBreak.nextSibling);
-        
-        // Move cursor to the new paragraph
-        const newRange = document.createRange();
-        newRange.setStart(newParagraph, 0);
-        newRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-        
-        this.editor.focus();
-    }
-    
-    togglePagination() {
+    toggleVisualPagination() {
         this.isPaginationEnabled = !this.isPaginationEnabled;
-        this.editorWrapper.classList.toggle('pagination-enabled', this.isPaginationEnabled);
         
         if (this.isPaginationEnabled) {
-            this.updatePagination();
+            this.enableVisualPagination();
+            this.paginationToggleBtn.classList.add('active');
         } else {
-            this.removePagination();
+            this.disableVisualPagination();
+            this.paginationToggleBtn.classList.remove('active');
         }
+        
+        console.log('Visual pagination toggled:', this.isPaginationEnabled);
     }
     
-    updatePagination() {
-        this.removePagination();
+    enableVisualPagination() {
+        this.editorWrapper.classList.add('visual-pagination-enabled');
+        this.createPageBoundaries();
+        this.updateCurrentPageIndicator();
+        console.log('Visual page boundaries enabled');
+    }
+    
+    disableVisualPagination() {
+        this.editorWrapper.classList.remove('visual-pagination-enabled');
+        this.removePageBoundaries();
+        console.log('Visual page boundaries disabled');
+    }
+    
+    createPageBoundaries() {
+        this.removePageBoundaries(); // Clear any existing boundaries
         
-        const content = this.editor.innerHTML;
-        const pages = this.splitContentIntoPages(content);
+        const contentHeight = this.editor.scrollHeight;
+        const numberOfPages = Math.ceil(contentHeight / this.pageHeight);
         
-        this.editor.innerHTML = '';
-        this.pageElements = [];
-        
-        pages.forEach((pageContent, index) => {
-            const pageContainer = document.createElement('div');
-            pageContainer.className = 'page-container';
+        // Create page boundary overlays
+        for (let i = 0; i < numberOfPages; i++) {
+            const pageBoundary = document.createElement('div');
+            pageBoundary.className = 'page-boundary-overlay';
+            pageBoundary.style.top = `${i * this.pageHeight}px`;
+            pageBoundary.dataset.pageNumber = i + 1;
             
-            const pageContentDiv = document.createElement('div');
-            pageContentDiv.className = 'page-content';
-            pageContentDiv.innerHTML = pageContent;
-            
+            // Add page number
             const pageNumber = document.createElement('div');
-            pageNumber.className = 'page-number';
-            pageNumber.textContent = `Page ${index + 1}`;
+            pageNumber.className = 'page-number-indicator';
+            pageNumber.textContent = `Page ${i + 1}`;
+            pageBoundary.appendChild(pageNumber);
             
-            pageContainer.appendChild(pageContentDiv);
-            pageContainer.appendChild(pageNumber);
-            this.editor.appendChild(pageContainer);
+            // Add writing guidelines (optional)
+            const guidelines = document.createElement('div');
+            guidelines.className = 'writing-guidelines-overlay';
+            pageBoundary.appendChild(guidelines);
             
-            this.pageElements.push(pageContainer);
+            this.editor.appendChild(pageBoundary);
+            this.pageElements.push(pageBoundary);
+        }
+        
+        console.log(`Created ${numberOfPages} visual page boundaries`);
+    }
+    
+    removePageBoundaries() {
+        this.pageElements.forEach(element => element.remove());
+        this.pageElements = [];
+    }
+    
+    updateCurrentPageIndicator() {
+        const boundaries = this.editor.querySelectorAll('.page-boundary-overlay');
+        const wrapperRect = this.editorWrapper.getBoundingClientRect();
+        const wrapperCenter = wrapperRect.top + (wrapperRect.height / 2);
+        
+        boundaries.forEach(boundary => {
+            boundary.classList.remove('current-page');
+            
+            const boundaryRect = boundary.getBoundingClientRect();
+            const boundaryCenter = boundaryRect.top + (boundaryRect.height / 2);
+            
+            // Check if this boundary is currently in view
+            if (Math.abs(boundaryCenter - wrapperCenter) < wrapperRect.height * 0.3) {
+                boundary.classList.add('current-page');
+            }
         });
     }
     
-    splitContentIntoPages(content) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
-        
-        // Find page breaks
-        const pageBreaks = tempDiv.querySelectorAll('.page-break');
-        const pages = [];
-        let currentPage = '';
-        let currentHeight = 0;
-        const maxHeight = this.pageHeight - (this.pageMargin * 2);
-        
-        function calculateContentHeight(html) {
-            const measure = document.createElement('div');
-            measure.style.cssText = `
-                position: absolute;
-                left: -9999px;
-                top: -9999px;
-                width: ${this.pageWidth - (this.pageMargin * 2)}px;
-                padding: ${this.pageMargin}px;
-                visibility: hidden;
-            `;
-            measure.innerHTML = html;
-            document.body.appendChild(measure);
-            const height = measure.offsetHeight;
-            document.body.removeChild(measure);
-            return height;
-        }
-        
-        // Simple page splitting based on page breaks
-        if (pageBreaks.length > 0) {
-            let start = 0;
-            pageBreaks.forEach((breakEl, index) => {
-                const breakIndex = content.indexOf('<div class="page-break"', start);
-                const pageContent = content.substring(start, breakIndex);
-                pages.push(pageContent);
-                start = breakIndex + breakEl.outerHTML.length;
-            });
-            // Add remaining content
-            if (start < content.length) {
-                pages.push(content.substring(start));
-            }
-        } else {
-            // Simple fallback: split by approximate page height
-            const lines = content.split('</p>');
-            let currentPageContent = '';
-            
-            lines.forEach(line => {
-                const testContent = currentPageContent + line + '</p>';
-                const testHeight = calculateContentHeight.call(this, testContent);
-                
-                if (testHeight <= maxHeight || currentPageContent === '') {
-                    currentPageContent = testContent;
-                } else {
-                    pages.push(currentPageContent);
-                    currentPageContent = line + '</p>';
-                }
-            });
-            
-            if (currentPageContent) {
-                pages.push(currentPageContent);
-            }
-        }
-        
-        return pages.length > 0 ? pages : [content];
-    }
-    
-    removePagination() {
-        if (this.pageElements.length > 0) {
-            this.pageElements.forEach(page => page.remove());
-            this.pageElements = [];
-        }
-    }
-    
-    toggleFocusMode() {
-        this.editor.classList.toggle('focus-mode');
-        
-        if (this.editor.classList.contains('focus-mode')) {
-            // Fade out other elements
-            document.querySelectorAll('#editor > *:not(.focus-mode)').forEach(el => {
-                if (el !== this.editor) {
-                    el.style.opacity = '0.3';
-                    el.style.transition = 'opacity 0.3s ease';
-                }
-            });
-        } else {
-            // Restore opacity
-            document.querySelectorAll('#editor > *').forEach(el => {
-                el.style.opacity = '1';
-            });
-        }
-    }
-    
-    toggleReadingMode() {
-        this.editor.classList.toggle('reading-mode');
-    }
-    
-    insertTable() {
-        const tableHtml = `
-            <table class="editor-table" contenteditable="true">
-                <thead>
-                    <tr>
-                        <th>Header 1</th>
-                        <th>Header 2</th>
-                        <th>Header 3</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Cell 1</td>
-                        <td>Cell 2</td>
-                        <td>Cell 3</td>
-                    </tr>
-                    <tr>
-                        <td>Cell 4</td>
-                        <td>Cell 5</td>
-                        <td>Cell 6</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p><br></p>
-        `;
-        
-        const selection = window.getSelection();
-        const range = selection.getRangeAt(0);
-        
-        range.insertNode(document.createRange().createContextualFragment(tableHtml));
-        this.editor.focus();
-    }
-    
-    // Enhanced word count with detailed statistics
-    getDetailedWordCount() {
-        const text = this.editor.innerText || '';
-        const words = text.trim().split(/\s+/).filter(Boolean);
-        const characters = text.length;
-        const charactersNoSpaces = text.replace(/\s/g, '').length;
-        const paragraphs = this.editor.querySelectorAll('p').length;
-        const headings = this.editor.querySelectorAll('h1, h2, h3').length;
-        
-        return {
-            words: words.length,
-            characters: characters,
-            charactersNoSpaces: charactersNoSpaces,
-            paragraphs: paragraphs,
-            headings: headings,
-            readingTime: Math.ceil(words.length / 200) // 200 wpm
-        };
-    }
-    
-    // Export for printing with page breaks
-    getContentForPrint() {
-        let content = this.editor.innerHTML;
-        
-        // Convert page breaks to CSS page breaks for print
-        content = content.replace(/<div class="page-break"[^>]*><\/div>/g, '<div style="page-break-after: always;"></div>');
-        
-        return content;
+    // Public method to check if pagination is enabled
+    isEnabled() {
+        return this.isPaginationEnabled;
     }
 }
 
-// Initialize the module when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    const editor = document.getElementById('editor');
-    const editorWrapper = document.getElementById('editor-wrapper');
+// Initialize when DOM is ready - but don't auto-enable
+if (typeof window !== 'undefined') {
+    window.PageForgePagination = PageForgePagination;
     
-    if (editor && editorWrapper) {
-        window.pageForgePagination = new PageForgePagination(editor, editorWrapper);
-    }
-});
+    document.addEventListener('DOMContentLoaded', () => {
+        const editor = document.getElementById('editor');
+        if (editor) {
+            // Create instance but don't enable by default
+            window.pageForgePagination = new PageForgePagination(editor);
+            console.log('Visual Pagination ready - click the grid button to enable');
+        }
+    });
+}
 
-// Export for use in main application
+// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PageForgePagination;
 }
