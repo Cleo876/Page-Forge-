@@ -1,12 +1,12 @@
-// PageForge Automatic Pagination Module
+// PageForge Pagination & Enhanced Features Module
 // Filename: pageforge-pagination.js
-// Purpose: Adds automatic page creation with digital paper appearance
+// Purpose: Adds page breaks, pagination view, and professional writing features
 
 class PageForgePagination {
-    constructor(editor) {
+    constructor(editor, editorWrapper) {
         this.editor = editor;
-        this.editorWrapper = document.getElementById('editor-wrapper');
-        this.isPaginationEnabled = true; // Enabled by default
+        this.editorWrapper = editorWrapper;
+        this.isPaginationEnabled = false;
         this.pageElements = [];
         
         // A4 dimensions in pixels at 96 DPI
@@ -14,188 +14,286 @@ class PageForgePagination {
         this.pageHeight = 1122;
         this.pageMargin = 96;
         
-        // Lines per page estimation (approx 55 lines for A4 with 14px font)
-        this.linesPerPage = 55;
-        this.currentLines = 0;
-        
         this.init();
     }
     
     init() {
         this.setupStyles();
+        this.addToolbarButtons();
         this.setupEventListeners();
-        this.enablePagination();
-        console.log('Auto Pagination initialized');
     }
     
     setupStyles() {
-        if (document.getElementById('auto-pagination-styles')) return;
-        
         const style = document.createElement('style');
-        style.id = 'auto-pagination-styles';
         style.textContent = `
-            /* Auto Page Canvas - Always Enabled */
-            .auto-pagination-enabled #editor {
-                background: transparent !important;
-                box-shadow: none !important;
-                min-height: auto !important;
-                padding: 0 !important;
-                width: 100% !important;
-                display: flex;
-                flex-direction: column;
-                gap: 32px;
+            /* Page Break Styles */
+            .page-break {
+                page-break-after: always;
+                break-after: page;
+                display: block;
+                height: 0;
+                margin: 20px 0;
+                border-top: 2px dashed #cbd5e1;
+                position: relative;
+                text-align: center;
             }
             
-            /* Digital Paper Page */
-            .digital-page {
+            .page-break::after {
+                content: "Page Break";
+                position: absolute;
+                top: -10px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: white;
+                padding: 0 10px;
+                font-size: 12px;
+                color: #64748b;
+                font-weight: 500;
+            }
+            
+            .dark .page-break {
+                border-top-color: #475569;
+            }
+            
+            .dark .page-break::after {
+                background: #1e293b;
+                color: #94a3b8;
+            }
+            
+            /* Pagination View */
+            .pagination-enabled #editor {
+                box-shadow: none;
+                min-height: auto;
+                margin-bottom: 32px;
+                background: transparent !important;
+            }
+            
+            .page-container {
+                background: white;
                 width: ${this.pageWidth}px;
                 min-height: ${this.pageHeight}px;
-                background: white;
-                margin: 0 auto;
-                box-shadow: 
-                    0 0 0 1px rgba(0,0,0,0.1),
-                    0 4px 12px rgba(0, 0, 0, 0.08),
-                    0 2px 4px rgba(0, 0, 0, 0.04);
+                margin: 0 auto 32px auto;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
                 position: relative;
-                border-radius: 2px;
-                overflow: hidden;
-                transition: box-shadow 0.2s ease;
+                page-break-after: always;
+                break-after: page;
             }
             
-            .digital-page:hover {
-                box-shadow: 
-                    0 0 0 1px rgba(59, 130, 246, 0.3),
-                    0 8px 24px rgba(0, 0, 0, 0.12),
-                    0 4px 8px rgba(0, 0, 0, 0.06);
-            }
-            
-            .dark .digital-page {
+            .dark .page-container {
                 background: #1f2937;
-                box-shadow: 
-                    0 0 0 1px rgba(255,255,255,0.1),
-                    0 4px 12px rgba(0, 0, 0, 0.3),
-                    0 2px 4px rgba(0, 0, 0, 0.2);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             }
             
-            .dark .digital-page:hover {
-                box-shadow: 
-                    0 0 0 1px rgba(96, 165, 250, 0.4),
-                    0 8px 24px rgba(0, 0, 0, 0.4),
-                    0 4px 8px rgba(0, 0, 0, 0.3);
-            }
-            
-            /* Page Content Area */
-            .page-content-area {
+            .page-content {
                 padding: ${this.pageMargin}px;
                 min-height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
-                position: relative;
+                height: calc(${this.pageHeight}px - ${this.pageMargin * 2}px);
+                overflow: hidden;
             }
             
-            /* Page Number */
             .page-number {
                 position: absolute;
                 bottom: 20px;
                 right: ${this.pageMargin}px;
-                font-size: 11px;
+                font-size: 12px;
                 color: #6b7280;
                 font-weight: 500;
-                font-family: 'Inter', sans-serif;
             }
             
             .dark .page-number {
                 color: #9ca3af;
             }
             
-            /* Writing Guidelines (Subtle) */
-            .writing-guidelines {
+            /* Enhanced Writing Features */
+            .word-count-popup {
                 position: absolute;
-                top: ${this.pageMargin}px;
-                bottom: ${this.pageMargin}px;
-                left: ${this.pageMargin}px;
-                right: ${this.pageMargin}px;
+                background: #1f2937;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 12px;
+                z-index: 1000;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
                 pointer-events: none;
-                z-index: 1;
-                opacity: 0.03;
-                background-image: 
-                    repeating-linear-gradient(
-                        to bottom,
-                        transparent,
-                        transparent 23px,
-                        #4b5563 23px,
-                        #4b5563 24px
-                    );
+                transform: translateY(-100%);
+                margin-top: -8px;
             }
             
-            .dark .writing-guidelines {
-                background-image: 
-                    repeating-linear-gradient(
-                        to bottom,
-                        transparent,
-                        transparent 23px,
-                        #e5e7eb 23px,
-                        #e5e7eb 24px
-                    );
-            }
-            
-            /* Current Page Highlight */
-            .digital-page.current-page {
-                box-shadow: 
-                    0 0 0 2px #4f46e5,
-                    0 8px 24px rgba(0, 0, 0, 0.12) !important;
-            }
-            
-            .dark .digital-page.current-page {
-                box-shadow: 
-                    0 0 0 2px #6366f1,
-                    0 8px 24px rgba(0, 0, 0, 0.4) !important;
-            }
-            
-            /* Page Header (Optional) */
-            .page-header {
+            .word-count-popup::after {
+                content: '';
                 position: absolute;
-                top: 20px;
-                left: ${this.pageMargin}px;
-                right: ${this.pageMargin}px;
-                height: 1px;
-                background: linear-gradient(90deg, 
-                    transparent 0%, 
-                    #e5e7eb 20%, 
-                    #e5e7eb 80%, 
-                    transparent 100%);
+                bottom: -4px;
+                left: 50%;
+                transform: translateX(-50%);
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid #1f2937;
             }
             
-            .dark .page-header {
-                background: linear-gradient(90deg, 
-                    transparent 0%, 
-                    #4b5563 20%, 
-                    #4b5563 80%, 
-                    transparent 100%);
+            /* Focus Mode */
+            .focus-mode {
+                background: #fef3c7 !important;
+                transition: background-color 0.3s ease;
             }
             
-            /* Auto-expand last page */
-            .digital-page:last-child {
-                min-height: ${this.pageHeight}px;
+            .dark .focus-mode {
+                background: #78350f !important;
             }
             
-            /* Ensure content is visible and editable */
-            .page-content-area > * {
-                position: relative;
-                z-index: 2;
+            /* Reading Mode */
+            .reading-mode {
+                max-width: 800px;
+                margin: 0 auto;
+                line-height: 1.8;
+                font-size: 18px;
             }
             
-            /* Smooth transitions */
-            .digital-page {
-                transition: all 0.3s ease;
+            .reading-mode h1 {
+                font-size: 2.5rem;
+                margin-bottom: 2rem;
+            }
+            
+            .reading-mode h2 {
+                font-size: 2rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .reading-mode h3 {
+                font-size: 1.5rem;
+                margin-bottom: 1rem;
+            }
+            
+            /* Table Styles */
+            .editor-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1rem 0;
+            }
+            
+            .editor-table td, .editor-table th {
+                border: 1px solid #d1d5db;
+                padding: 8px 12px;
+                text-align: left;
+            }
+            
+            .editor-table th {
+                background: #f3f4f6;
+                font-weight: 600;
+            }
+            
+            .dark .editor-table td, .dark .editor-table th {
+                border-color: #4b5563;
+            }
+            
+            .dark .editor-table th {
+                background: #374151;
+            }
+
+            /* Auto page break indicator */
+            .auto-page-break {
+                border-top: 1px dotted #e5e7eb;
+                margin: 10px 0;
+                opacity: 0.5;
+            }
+            
+            .dark .auto-page-break {
+                border-top-color: #4b5563;
             }
         `;
         document.head.appendChild(style);
     }
     
+    addToolbarButtons() {
+        const toolbar = document.querySelector('.flex-shrink-0.flex.items-center.gap-1.px-4.py-2');
+        if (!toolbar) return;
+        
+        // Add separator
+        const separator = document.createElement('div');
+        separator.className = 'h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2';
+        toolbar.appendChild(separator);
+        
+        // Page Break Button
+        const pageBreakBtn = document.createElement('button');
+        pageBreakBtn.className = 'toolbar-btn';
+        pageBreakBtn.title = 'Insert Page Break (Ctrl+Enter)';
+        pageBreakBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+        `;
+        pageBreakBtn.addEventListener('click', () => this.insertPageBreak());
+        toolbar.appendChild(pageBreakBtn);
+        
+        // Pagination Toggle Button
+        const paginationBtn = document.createElement('button');
+        paginationBtn.className = 'toolbar-btn';
+        paginationBtn.title = 'Toggle Pagination View';
+        paginationBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+        `;
+        paginationBtn.addEventListener('click', () => this.togglePagination());
+        toolbar.appendChild(paginationBtn);
+        
+        // Add to Tools menu
+        this.addMenuItems();
+    }
+    
+    addMenuItems() {
+        // Find the Tools menu
+        const toolsMenu = Array.from(document.querySelectorAll('[data-menu]')).find(menu => 
+            menu.querySelector('.menu-btn')?.textContent?.includes('Tools')
+        );
+        
+        if (!toolsMenu) return;
+        
+        const dropdown = toolsMenu.querySelector('.menu-dropdown');
+        
+        // Add separator
+        const separator = document.createElement('hr');
+        separator.className = 'my-1 border-gray-200 dark:border-gray-700';
+        dropdown.appendChild(separator);
+        
+        // Focus Mode
+        const focusModeItem = this.createMenuItem('Focus Mode', 'M9 4v16m6-16v16M4 12h16', () => this.toggleFocusMode());
+        dropdown.appendChild(focusModeItem);
+        
+        // Reading Mode
+        const readingModeItem = this.createMenuItem('Reading Mode', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', () => this.toggleReadingMode());
+        dropdown.appendChild(readingModeItem);
+        
+        // Insert Table
+        const tableItem = this.createMenuItem('Insert Table', 'M4 6h16M4 10h16M4 14h16M4 18h16', () => this.insertTable());
+        dropdown.appendChild(tableItem);
+    }
+    
+    createMenuItem(text, pathD, onClick) {
+        const item = document.createElement('button');
+        item.className = 'menu-item';
+        item.innerHTML = `
+            <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${pathD}"></path>
+            </svg>
+            <span>${text}</span>
+        `;
+        item.addEventListener('click', onClick);
+        return item;
+    }
+    
     setupEventListeners() {
-        // Monitor content changes to automatically manage pages
+        // Keyboard shortcut for page break
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                this.insertPageBreak();
+            }
+        });
+        
+        // Update pagination on content changes
         const observer = new MutationObserver(() => {
             if (this.isPaginationEnabled) {
-                setTimeout(() => this.organizeContentIntoPages(), 50);
+                setTimeout(() => this.updatePagination(), 100);
             }
         });
         
@@ -204,205 +302,262 @@ class PageForgePagination {
             subtree: true,
             characterData: true
         });
-        
-        // Update current page on scroll
-        this.editorWrapper.addEventListener('scroll', () => {
-            this.updateCurrentPageIndicator();
-        });
-        
-        console.log('Auto pagination listeners setup');
     }
     
-    enablePagination() {
-        this.editorWrapper.classList.add('auto-pagination-enabled');
-        this.organizeContentIntoPages();
-        console.log('Auto pagination enabled');
+    insertPageBreak() {
+        const pageBreak = document.createElement('div');
+        pageBreak.className = 'page-break';
+        pageBreak.contentEditable = 'false';
+        
+        const selection = window.getSelection();
+        const range = selection.getRangeAt(0);
+        
+        range.insertNode(pageBreak);
+        
+        // Add a paragraph after the page break for continued writing
+        const newParagraph = document.createElement('p');
+        newParagraph.innerHTML = '<br>';
+        pageBreak.parentNode.insertBefore(newParagraph, pageBreak.nextSibling);
+        
+        // Move cursor to the new paragraph
+        const newRange = document.createRange();
+        newRange.setStart(newParagraph, 0);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        this.editor.focus();
     }
     
-    disablePagination() {
-        this.editorWrapper.classList.remove('auto-pagination-enabled');
-        this.removePageWrappers();
-        console.log('Auto pagination disabled');
-    }
-    
-    organizeContentIntoPages() {
-        // Get all direct children of editor (excluding page wrappers)
-        const contentElements = Array.from(this.editor.children).filter(
-            child => !child.classList.contains('digital-page')
-        );
-        
-        if (contentElements.length === 0) {
-            this.ensureAtLeastOnePage();
-            return;
-        }
-        
-        this.removePageWrappers();
-        this.distributeContentToPages(contentElements);
-        this.updateCurrentPageIndicator();
-    }
-    
-    distributeContentToPages(elements) {
-        let currentPage = this.createNewPage(1);
-        let currentPageHeight = 0;
-        let pageNumber = 1;
-        
-        elements.forEach((element, index) => {
-            const elementHeight = this.calculateElementHeight(element);
-            
-            // If adding this element would exceed page height, create new page
-            if (currentPageHeight + elementHeight > this.getAvailablePageHeight() && currentPageHeight > 0) {
-                pageNumber++;
-                currentPage = this.createNewPage(pageNumber);
-                currentPageHeight = 0;
-            }
-            
-            // Add element to current page
-            currentPage.querySelector('.page-content-area').appendChild(element);
-            currentPageHeight += elementHeight;
-            
-            // Ensure we have at least one element per page
-            if (currentPageHeight === 0 && index === elements.length - 1) {
-                const emptyParagraph = document.createElement('p');
-                emptyParagraph.innerHTML = '&nbsp;';
-                currentPage.querySelector('.page-content-area').appendChild(emptyParagraph);
-            }
-        });
-        
-        console.log(`Organized content into ${pageNumber} pages`);
-    }
-    
-    createNewPage(pageNumber) {
-        const page = document.createElement('div');
-        page.className = 'digital-page';
-        page.dataset.pageNumber = pageNumber;
-        
-        page.innerHTML = `
-            <div class="writing-guidelines"></div>
-            <div class="page-header"></div>
-            <div class="page-content-area" contenteditable="true"></div>
-            <div class="page-number">Page ${pageNumber}</div>
-        `;
-        
-        this.editor.appendChild(page);
-        this.pageElements.push(page);
-        
-        return page;
-    }
-    
-    calculateElementHeight(element) {
-        // Simple height estimation based on content
-        const tag = element.tagName.toLowerCase();
-        const text = element.textContent || '';
-        const children = element.children.length;
-        
-        let baseHeight = 0;
-        
-        switch(tag) {
-            case 'h1':
-                baseHeight = 60;
-                break;
-            case 'h2':
-                baseHeight = 45;
-                break;
-            case 'h3':
-                baseHeight = 35;
-                break;
-            case 'p':
-                baseHeight = Math.max(24, Math.ceil(text.length / 80) * 24);
-                break;
-            case 'ul':
-            case 'ol':
-                baseHeight = Math.max(30, children * 28);
-                break;
-            case 'blockquote':
-                baseHeight = 60;
-                break;
-            default:
-                baseHeight = element.offsetHeight || 40;
-        }
-        
-        // Add margin compensation
-        return baseHeight + 16;
-    }
-    
-    getAvailablePageHeight() {
-        return this.pageHeight - (this.pageMargin * 2) - 40; // 40px for page number area
-    }
-    
-    ensureAtLeastOnePage() {
-        if (this.pageElements.length === 0) {
-            const page = this.createNewPage(1);
-            const emptyParagraph = document.createElement('p');
-            emptyParagraph.innerHTML = '&nbsp;';
-            page.querySelector('.page-content-area').appendChild(emptyParagraph);
-        }
-    }
-    
-    removePageWrappers() {
-        this.pageElements.forEach(page => page.remove());
-        this.pageElements = [];
-        
-        // Extract all content from pages and put back in editor
-        const pages = this.editor.querySelectorAll('.digital-page');
-        pages.forEach(page => {
-            const contentArea = page.querySelector('.page-content-area');
-            if (contentArea) {
-                const children = Array.from(contentArea.children);
-                children.forEach(child => {
-                    this.editor.appendChild(child);
-                });
-            }
-            page.remove();
-        });
-    }
-    
-    updateCurrentPageIndicator() {
-        const pages = this.editor.querySelectorAll('.digital-page');
-        const wrapperRect = this.editorWrapper.getBoundingClientRect();
-        const wrapperCenter = wrapperRect.top + (wrapperRect.height / 2);
-        
-        pages.forEach(page => {
-            page.classList.remove('current-page');
-            
-            const pageRect = page.getBoundingClientRect();
-            const pageCenter = pageRect.top + (pageRect.height / 2);
-            
-            // Check if page center is within viewport center ± 25%
-            if (Math.abs(pageCenter - wrapperCenter) < wrapperRect.height * 0.25) {
-                page.classList.add('current-page');
-            }
-        });
-    }
-    
-    // Public method to toggle pagination (if needed)
     togglePagination() {
         this.isPaginationEnabled = !this.isPaginationEnabled;
+        this.editorWrapper.classList.toggle('pagination-enabled', this.isPaginationEnabled);
         
         if (this.isPaginationEnabled) {
-            this.enablePagination();
+            setTimeout(() => this.updatePagination(), 100);
         } else {
-            this.disablePagination();
+            this.removePagination();
+        }
+    }
+    
+    updatePagination() {
+        this.removePagination();
+        
+        const content = this.editor.innerHTML;
+        const pages = this.splitContentIntoPages(content);
+        
+        this.editor.innerHTML = '';
+        this.pageElements = [];
+        
+        pages.forEach((pageContent, index) => {
+            const pageContainer = document.createElement('div');
+            pageContainer.className = 'page-container';
+            
+            const pageContentDiv = document.createElement('div');
+            pageContentDiv.className = 'page-content';
+            pageContentDiv.innerHTML = pageContent;
+            
+            const pageNumber = document.createElement('div');
+            pageNumber.className = 'page-number';
+            pageNumber.textContent = `Page ${index + 1}`;
+            
+            pageContainer.appendChild(pageContentDiv);
+            pageContainer.appendChild(pageNumber);
+            this.editor.appendChild(pageContainer);
+            
+            this.pageElements.push(pageContainer);
+        });
+    }
+    
+    splitContentIntoPages(content) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        
+        // Remove existing page containers if any
+        const existingPages = tempDiv.querySelectorAll('.page-container');
+        existingPages.forEach(page => page.remove());
+        
+        // Get all block elements
+        const elements = Array.from(tempDiv.children);
+        const pages = [];
+        let currentPage = [];
+        let currentHeight = 0;
+        const maxPageHeight = this.pageHeight - (this.pageMargin * 2);
+        
+        // Approximate line height (adjust based on your font size)
+        const lineHeight = 22; // pixels per line
+        const paragraphSpacing = 16; // pixels between paragraphs
+        
+        elements.forEach(element => {
+            if (element.classList.contains('page-break')) {
+                // Manual page break - start new page
+                if (currentPage.length > 0) {
+                    pages.push(currentPage.map(el => el.outerHTML).join(''));
+                    currentPage = [];
+                    currentHeight = 0;
+                }
+                return;
+            }
+            
+            // Calculate approximate height for this element
+            let elementHeight = 0;
+            
+            if (element.tagName === 'P') {
+                const text = element.textContent || '';
+                const lines = Math.max(1, Math.ceil(text.length / 80)); // Approx chars per line
+                elementHeight = (lines * lineHeight) + paragraphSpacing;
+            } 
+            else if (element.tagName === 'H1') {
+                elementHeight = 60; // Approx height for H1
+            }
+            else if (element.tagName === 'H2') {
+                elementHeight = 45; // Approx height for H2
+            }
+            else if (element.tagName === 'H3') {
+                elementHeight = 35; // Approx height for H3
+            }
+            else if (element.tagName === 'UL' || element.tagName === 'OL') {
+                const items = element.querySelectorAll('li');
+                elementHeight = items.length * 30 + paragraphSpacing;
+            }
+            else if (element.tagName === 'BLOCKQUOTE') {
+                const text = element.textContent || '';
+                const lines = Math.max(1, Math.ceil(text.length / 70));
+                elementHeight = (lines * lineHeight) + 40; // Extra for padding
+            }
+            else {
+                // Default height for other elements
+                elementHeight = 40;
+            }
+            
+            // Check if this element would exceed page height
+            if (currentHeight + elementHeight > maxPageHeight && currentPage.length > 0) {
+                // Start new page
+                pages.push(currentPage.map(el => el.outerHTML).join(''));
+                currentPage = [element];
+                currentHeight = elementHeight;
+            } else {
+                // Add to current page
+                currentPage.push(element);
+                currentHeight += elementHeight;
+            }
+        });
+        
+        // Add the last page
+        if (currentPage.length > 0) {
+            pages.push(currentPage.map(el => el.outerHTML).join(''));
         }
         
-        return this.isPaginationEnabled;
+        // Ensure we have at least one page
+        if (pages.length === 0) {
+            pages.push(content);
+        }
+        
+        return pages;
+    }
+    
+    removePagination() {
+        if (this.pageElements.length > 0) {
+            this.pageElements.forEach(page => page.remove());
+            this.pageElements = [];
+        }
+    }
+    
+    toggleFocusMode() {
+        this.editor.classList.toggle('focus-mode');
+        
+        if (this.editor.classList.contains('focus-mode')) {
+            // Fade out other elements
+            document.querySelectorAll('#app-container > *:not(#editor)').forEach(el => {
+                el.style.opacity = '0.3';
+                el.style.transition = 'opacity 0.3s ease';
+            });
+        } else {
+            // Restore opacity
+            document.querySelectorAll('#app-container > *').forEach(el => {
+                el.style.opacity = '1';
+            });
+        }
+    }
+    
+    toggleReadingMode() {
+        this.editor.classList.toggle('reading-mode');
+    }
+    
+    insertTable() {
+        const tableHtml = `
+            <table class="editor-table" contenteditable="true">
+                <thead>
+                    <tr>
+                        <th>Header 1</th>
+                        <th>Header 2</th>
+                        <th>Header 3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Cell 1</td>
+                        <td>Cell 2</td>
+                        <td>Cell 3</td>
+                    </tr>
+                    <tr>
+                        <td>Cell 4</td>
+                        <td>Cell 5</td>
+                        <td>Cell 6</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p><br></p>
+        `;
+        
+        const selection = window.getSelection();
+        const range = selection.getRangeAt(0);
+        
+        range.insertNode(document.createRange().createContextualFragment(tableHtml));
+        this.editor.focus();
+    }
+    
+    // Enhanced word count with detailed statistics
+    getDetailedWordCount() {
+        const text = this.editor.innerText || '';
+        const words = text.trim().split(/\s+/).filter(Boolean);
+        const characters = text.length;
+        const charactersNoSpaces = text.replace(/\s/g, '').length;
+        const paragraphs = this.editor.querySelectorAll('p').length;
+        const headings = this.editor.querySelectorAll('h1, h2, h3').length;
+        
+        return {
+            words: words.length,
+            characters: characters,
+            charactersNoSpaces: charactersNoSpaces,
+            paragraphs: paragraphs,
+            headings: headings,
+            readingTime: Math.ceil(words.length / 200) // 200 wpm
+        };
+    }
+    
+    // Export for printing with page breaks
+    getContentForPrint() {
+        let content = this.editor.innerHTML;
+        
+        // Convert page breaks to CSS page breaks for print
+        content = content.replace(/<div class="page-break"[^>]*><\/div>/g, '<div style="page-break-after: always;"></div>');
+        
+        return content;
     }
 }
 
-// Auto-initialize when DOM is ready
-if (typeof window !== 'undefined') {
-    window.PageForgePagination = PageForgePagination;
+// Initialize the module when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const editor = document.getElementById('editor');
+    const editorWrapper = document.getElementById('editor-wrapper');
     
-    document.addEventListener('DOMContentLoaded', () => {
-        const editor = document.getElementById('editor');
-        if (editor) {
-            // Enable auto-pagination by default
-            window.pageForgePagination = new PageForgePagination(editor);
-            console.log('Auto Pagination ready - pages created automatically');
-        }
-    });
-}
+    if (editor && editorWrapper) {
+        window.pageForgePagination = new PageForgePagination(editor, editorWrapper);
+    }
+});
 
-// Export for module systems
+// Export for use in main application
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PageForgePagination;
 }
