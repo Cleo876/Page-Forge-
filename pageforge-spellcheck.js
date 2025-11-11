@@ -1,5 +1,5 @@
 // pageforge-spellcheck.js
-const SPELLCHECKER_VERSION = '1.0.0';
+const SPELLCHECKER_VERSION = '1.0.1'; // Bumped version
 
 class PageForgeSpellChecker {
     constructor(editor, statusBar) {
@@ -129,7 +129,7 @@ class PageForgeSpellChecker {
             const isCorrect = await this.checkWord(word);
             
             if (!isCorrect) {
-                this.highlightWord(word, positions);
+                this.highlightWordSurgical(word, positions);
             }
         }
     }
@@ -174,31 +174,106 @@ class PageForgeSpellChecker {
             'will', 'your', 'from', 'they', 'know', 'want', 'been', 'good', 'much',
             'some', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make',
             'many', 'then', 'well', 'were', 'what', 'where', 'which', 'while',
-            'who', 'will', 'with', 'would', 'write', 'year', 'you', 'young', 'your'
+            'who', 'will', 'with', 'would', 'write', 'year', 'you', 'young', 'your',
+            'welcome', 'to', 'pageforge', 'this', 'is', 'your', 'new', 'document', 'start', 'typing', 'here',
+            'features', 'here', 'are', 'some', 'of', 'the', 'things', 'you', 'can', 'do',
+            'use', 'the', 'toolbar', 'above', 'style', 'your', 'text', 'bold', 'italic', 'headings', 'etc',
+            'work', 'automatically', 'saved', 'browser', 'local', 'storage',
+            'toggle', 'between', 'light', 'dark', 'mode', 'using', 'icon', 'in', 'header',
+            'hierarchy', 'panel', 'on', 'left', 'see', 'structure',
+            'outline', 'automatically', 'updates', 'as', 'add', 'heading', 'or', 'styles',
+            'even', 'drag', 'drop', 'sections', 're', 'order',
+            'new', 'click', 'inside', 'section', 'see', 'dashed', 'line', 'showing', 'scope', 'just', 'like', 'ide',
+            'second', 'paragraph', 'belongs', 'child', 'content', 'part', 'blockquote', 'useful', 'highlighting', 'quotes', 'important', 'notes'
         ]);
 
         return commonWords.has(word.toLowerCase()) || word.length <= 2;
     }
 
-    highlightWord(word, positions) {
-        let content = this.editor.innerHTML;
-        
-        // Create a safe regex pattern for the word
+    highlightWordSurgical(word, positions) {
+        // Use TreeWalker to find text nodes without destroying HTML structure
+        const walker = document.createTreeWalker(
+            this.editor,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function(node) {
+                    // Skip text nodes that are already inside misspelled-word spans
+                    if (node.parentNode.classList && node.parentNode.classList.contains('misspelled-word')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    // Skip text nodes in elements we don't want to spellcheck
+                    if (node.parentNode.tagName === 'SCRIPT' || node.parentNode.tagName === 'STYLE') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            },
+            false
+        );
+
+        const textNodes = [];
+        let node;
+        while (node = walker.nextNode()) {
+            textNodes.push(node);
+        }
+
         const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
-        
-        content = content.replace(regex, (match) => {
-            return `<span class="misspelled-word" data-word="${word}">${match}</span>`;
+
+        textNodes.forEach(textNode => {
+            const text = textNode.textContent;
+            const matches = [...text.matchAll(regex)];
+            
+            if (matches.length > 0) {
+                // We have matches, need to replace this text node
+                const parent = textNode.parentNode;
+                
+                // If parent is already a misspelled word span for this word, skip
+                if (parent.classList && parent.classList.contains('misspelled-word') && parent.dataset.word === word) {
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                let lastIndex = 0;
+
+                matches.forEach(match => {
+                    // Add text before match
+                    if (match.index > lastIndex) {
+                        fragment.appendChild(
+                            document.createTextNode(text.substring(lastIndex, match.index))
+                        );
+                    }
+
+                    // Add highlighted word
+                    const span = document.createElement('span');
+                    span.className = 'misspelled-word';
+                    span.dataset.word = word.toLowerCase();
+                    span.textContent = match[0];
+                    fragment.appendChild(span);
+
+                    lastIndex = match.index + match[0].length;
+                });
+
+                // Add remaining text
+                if (lastIndex < text.length) {
+                    fragment.appendChild(
+                        document.createTextNode(text.substring(lastIndex))
+                    );
+                }
+
+                // Replace the original text node
+                parent.replaceChild(fragment, textNode);
+            }
         });
-        
-        this.editor.innerHTML = content;
     }
 
     clearHighlights() {
         const misspelledWords = this.editor.querySelectorAll('.misspelled-word');
         misspelledWords.forEach(span => {
             const parent = span.parentNode;
+            // Replace span with its text content
             parent.replaceChild(document.createTextNode(span.textContent), span);
+            // Normalize to merge adjacent text nodes
             parent.normalize();
         });
     }
@@ -240,8 +315,24 @@ class PageForgeSpellChecker {
         this.contextMenu.appendChild(addToDictDiv);
         
         // Position and show the context menu
-        this.contextMenu.style.left = x + 'px';
-        this.contextMenu.style.top = y + 'px';
+        const rect = this.contextMenu.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Adjust position to stay within viewport
+        let adjustedX = x;
+        let adjustedY = y;
+        
+        if (x + rect.width > viewportWidth) {
+            adjustedX = viewportWidth - rect.width - 10;
+        }
+        
+        if (y + rect.height > viewportHeight) {
+            adjustedY = viewportHeight - rect.height - 10;
+        }
+        
+        this.contextMenu.style.left = adjustedX + 'px';
+        this.contextMenu.style.top = adjustedY + 'px';
         this.contextMenu.classList.remove('hidden');
     }
 
@@ -343,7 +434,9 @@ class PageForgeSpellChecker {
     // Cleanup method
     destroy() {
         clearTimeout(this.spellcheckTimeout);
-        this.contextMenu.remove();
+        if (this.contextMenu && this.contextMenu.parentNode) {
+            this.contextMenu.parentNode.removeChild(this.contextMenu);
+        }
         this.clearHighlights();
     }
 }
