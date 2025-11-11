@@ -1,5 +1,5 @@
 // pageforge-spellcheck.js
-const SPELLCHECKER_VERSION = '1.0.1'; // Bumped version
+const SPELLCHECKER_VERSION = '1.0.2'; // Bumped version for suggestions fix
 
 class PageForgeSpellChecker {
     constructor(editor, statusBar) {
@@ -342,21 +342,308 @@ class PageForgeSpellChecker {
     }
 
     getSuggestions(word) {
-        // Mock suggestions - replace with Hunspell suggestions
+        const lowercaseWord = word.toLowerCase();
+        
+        // Expanded suggestion map with common misspellings
         const suggestionMap = {
+            // Common typos
             'teh': ['the'],
             'adn': ['and'],
-            'recieve': ['receive'],
-            'seperate': ['separate'],
-            'definately': ['definitely'],
-            'occured': ['occurred'],
-            'accomodate': ['accommodate'],
-            'alot': ['a lot'],
+            'taht': ['that'],
+            'tihs': ['this'],
+            'awya': ['away'],
+            'bcak': ['back'],
             'becuase': ['because'],
-            'neccessary': ['necessary']
+            'cna': ['can'],
+            'dont': ['don\'t'],
+            'esle': ['else'],
+            'ehr': ['her'],
+            'frist': ['first'],
+            'fomr': ['form'],
+            'gril': ['girl'],
+            'haev': ['have'],
+            'htere': ['there'],
+            'htis': ['this'],
+            'hwne': ['when'],
+            'hwo': ['who'],
+            'jsut': ['just'],
+            'knwo': ['know'],
+            'liek': ['like'],
+            'mkae': ['make'],
+            'mroe': ['more'],
+            'nwe': ['new'],
+            'nowe': ['know'],
+            'peopel': ['people'],
+            'pwoer': ['power'],
+            'realy': ['really'],
+            'seh': ['she'],
+            'siad': ['said'],
+            'taht': ['that'],
+            'tkae': ['take'],
+            'thna': ['than'],
+            'thne': ['then'],
+            'thsi': ['this'],
+            'todya': ['today'],
+            'tought': ['thought'],
+            'twpo': ['two'],
+            'tyhat': ['that'],
+            'wrod': ['word'],
+            'wrods': ['words'],
+            'wroten': ['written'],
+            'yera': ['year'],
+            'yuo': ['you'],
+            'yuor': ['your'],
+
+            // Double letter errors
+            'accomodate': ['accommodate'],
+            'acommodate': ['accommodate'],
+            'acomplish': ['accomplish'],
+            'accross': ['across'],
+            'agressive': ['aggressive'],
+            'aparent': ['apparent'],
+            'apologyze': ['apologize'],
+            'aprear': ['appear'],
+            'aprearence': ['appearance'],
+            'apreciate': ['appreciate'],
+            'aquire': ['acquire'],
+            'arive': ['arrive'],
+            'assasin': ['assassin'],
+            'asociate': ['associate'],
+            'atempt': ['attempt'],
+            'atention': ['attention'],
+            'autor': ['author'],
+            'avarage': ['average'],
+            'awfull': ['awful'],
+            'becomeing': ['becoming'],
+            'begining': ['beginning'],
+            'beleive': ['believe'],
+            'benifit': ['benefit'],
+            'buisness': ['business'],
+            'calender': ['calendar'],
+            'carreer': ['career'],
+            'categorie': ['category'],
+            'cemetary': ['cemetery'],
+            'changable': ['changeable'],
+            'collegue': ['colleague'],
+            'comming': ['coming'],
+            'commited': ['committed'],
+            'commitee': ['committee'],
+            'completly': ['completely'],
+            'concious': ['conscious'],
+            'curiousity': ['curiosity'],
+            'definately': ['definitely'],
+            'dependance': ['dependence'],
+            'desparate': ['desperate'],
+            'develope': ['develop'],
+            'diffrence': ['difference'],
+            'disapear': ['disappear'],
+            'disipate': ['dissipate'],
+            'dissappoint': ['disappoint'],
+            'drunkeness': ['drunkenness'],
+            'embarass': ['embarrass'],
+            'enviroment': ['environment'],
+            'equiptment': ['equipment'],
+            'exagerate': ['exaggerate'],
+            'exellent': ['excellent'],
+            'existance': ['existence'],
+            'faciliate': ['facilitate'],
+            'firey': ['fiery'],
+            'flourescent': ['fluorescent'],
+            'foriegn': ['foreign'],
+            'fourty': ['forty'],
+            'foward': ['forward'],
+            'freind': ['friend'],
+            'fundemental': ['fundamental'],
+            'goverment': ['government'],
+            'grammer': ['grammar'],
+            'gratefull': ['grateful'],
+            'guage': ['gauge'],
+            'harrass': ['harass'],
+            'heighth': ['height'],
+            'humerous': ['humorous'],
+            'hygene': ['hygiene'],
+            'hypocrisy': ['hypocrisy'],
+            'ignor': ['ignore'],
+            'imediately': ['immediately'],
+            'incidently': ['incidentally'],
+            'independance': ['independence'],
+            'indispensible': ['indispensable'],
+            'inoculate': ['inoculate'],
+            'inteligence': ['intelligence'],
+            'intresting': ['interesting'],
+            'irresistable': ['irresistible'],
+            'knowlege': ['knowledge'],
+            'labratory': ['laboratory'],
+            'lenght': ['length'],
+            'liason': ['liaison'],
+            'libary': ['library'],
+            'lieing': ['lying'],
+            'manuever': ['maneuver'],
+            'mariage': ['marriage'],
+            'medecine': ['medicine'],
+            'mischevious': ['mischievous'],
+            'misspell': ['misspell'],
+            'neccessary': ['necessary'],
+            'neice': ['niece'],
+            'nieghbor': ['neighbor'],
+            'noticable': ['noticeable'],
+            'occured': ['occurred'],
+            'occurence': ['occurrence'],
+            'oppurtunity': ['opportunity'],
+            'parralel': ['parallel'],
+            'pasttime': ['pastime'],
+            'peice': ['piece'],
+            'percieve': ['perceive'],
+            'perseverence': ['perseverance'],
+            'personel': ['personnel'],
+            'playwrite': ['playwright'],
+            'posession': ['possession'],
+            'preceed': ['precede'],
+            'privelege': ['privilege'],
+            'proffesional': ['professional'],
+            'promiss': ['promise'],
+            'pronounciation': ['pronunciation'],
+            'publically': ['publicly'],
+            'recieve': ['receive'],
+            'recomend': ['recommend'],
+            'refered': ['referred'],
+            'referance': ['reference'],
+            'relevent': ['relevant'],
+            'religous': ['religious'],
+            'repitition': ['repetition'],
+            'restarant': ['restaurant'],
+            'rythm': ['rhythm'],
+            'secratary': ['secretary'],
+            'seperate': ['separate'],
+            'sargent': ['sergeant'],
+            'similiar': ['similar'],
+            'sincerly': ['sincerely'],
+            'speach': ['speech'],
+            'strenght': ['strength'],
+            'succesful': ['successful'],
+            'supercede': ['supersede'],
+            'suprise': ['surprise'],
+            'temperture': ['temperature'],
+            'tendancy': ['tendency'],
+            'therefore': ['therefore'],
+            'thier': ['their'],
+            'tommorow': ['tomorrow'],
+            'tounge': ['tongue'],
+            'truely': ['truly'],
+            'twelth': ['twelfth'],
+            'tyranny': ['tyranny'],
+            'underate': ['underrate'],
+            'untill': ['until'],
+            'vaccuum': ['vacuum'],
+            'vegeterian': ['vegetarian'],
+            'villian': ['villain'],
+            'wierd': ['weird'],
+            'writting': ['writing'],
+
+            // Common word confusions
+            'affect': ['effect'],
+            'effect': ['affect'],
+            'accept': ['except'],
+            'except': ['accept'],
+            'advice': ['advise'],
+            'advise': ['advice'],
+            'allot': ['a lot'],
+            'alot': ['a lot'],
+            'altogether': ['all together'],
+            'anyway': ['any way'],
+            'breath': ['breathe'],
+            'breathe': ['breath'],
+            'choose': ['chose'],
+            'chose': ['choose'],
+            'clothes': ['cloths'],
+            'complement': ['compliment'],
+            'compliment': ['complement'],
+            'conscience': ['conscious'],
+            'council': ['counsel'],
+            'desert': ['dessert'],
+            'dessert': ['desert'],
+            'device': ['devise'],
+            'devise': ['device'],
+            'elicit': ['illicit'],
+            'eminent': ['imminent'],
+            'ensure': ['insure'],
+            'everyday': ['every day'],
+            'its': ['it\'s'],
+            'loose': ['lose'],
+            'moral': ['morale'],
+            'passed': ['past'],
+            'personal': ['personnel'],
+            'principal': ['principle'],
+            'stationary': ['stationery'],
+            'than': ['then'],
+            'their': ['there'],
+            'there': ['their'],
+            'they\'re': ['their', 'there'],
+            'to': ['too', 'two'],
+            'weather': ['whether'],
+            'who\'s': ['whose'],
+            'your': ['you\'re'],
+            'you\'re': ['your']
         };
+
+        // First, check if we have direct suggestions
+        if (suggestionMap[lowercaseWord]) {
+            return suggestionMap[lowercaseWord];
+        }
+
+        // Generate phonetic suggestions for common patterns
+        const phoneticSuggestions = this.generatePhoneticSuggestions(lowercaseWord);
+        if (phoneticSuggestions.length > 0) {
+            return phoneticSuggestions.slice(0, 3);
+        }
+
+        return [];
+    }
+
+    generatePhoneticSuggestions(word) {
+        const suggestions = [];
         
-        return suggestionMap[word.toLowerCase()] || [];
+        // Common phonetic patterns
+        const patterns = [
+            // "ie" vs "ei"
+            { pattern: /ie/g, replacement: 'ei' },
+            { pattern: /ei/g, replacement: 'ie' },
+            
+            // Double letters
+            { pattern: /([a-z])\1/, replacement: '$1' },
+            { pattern: /([a-z])(?=[a-z])/, replacement: '$1$1' },
+            
+            // Common suffix errors
+            { pattern: /able$/, replacement: 'ible' },
+            { pattern: /ible$/, replacement: 'able' },
+            { pattern: /ant$/, replacement: 'ent' },
+            { pattern: /ent$/, replacement: 'ant' },
+            { pattern: /ence$/, replacement: 'ance' },
+            { pattern: /ance$/, replacement: 'ence' },
+            
+            // Common prefix errors
+            { pattern: /^un/, replacement: 'in' },
+            { pattern: /^in/, replacement: 'un' },
+            { pattern: /^dis/, replacement: 'mis' },
+            { pattern: /^mis/, replacement: 'dis' },
+            
+            // Common vowel errors
+            { pattern: /a/, replacement: 'e' },
+            { pattern: /e/, replacement: 'a' },
+            { pattern: /i/, replacement: 'e' },
+            { pattern: /o/, replacement: 'u' },
+            { pattern: /u/, replacement: 'o' }
+        ];
+
+        // Try each pattern
+        patterns.forEach(({ pattern, replacement }) => {
+            const suggestion = word.replace(pattern, replacement);
+            if (suggestion !== word && this.mockSpellCheck(suggestion)) {
+                suggestions.push(suggestion);
+            }
+        });
+
+        return [...new Set(suggestions)]; // Remove duplicates
     }
 
     replaceWord(newWord) {
