@@ -1,5 +1,5 @@
 // pageforge-spellcheck.js
-const SPELLCHECKER_VERSION = '1.0.1'; // Bumped version
+const SPELLCHECKER_VERSION = '1.2.0'; // Intelligent triggering version
 
 class PageForgeSpellChecker {
     constructor(editor, statusBar) {
@@ -8,7 +8,23 @@ class PageForgeSpellChecker {
         this.isEnabled = true;
         this.currentLocale = 'en-US';
         this.customDictionary = new Set();
-        this.spellcheckTimeout = null;
+        
+        // Spellcheck timing control
+        this.quickCheckTimeout = null;
+        this.comprehensiveCheckTimeout = null;
+        this.isChecking = false;
+        
+        // Selection and state tracking
+        this.lastSelection = null;
+        this.lastWordCount = 0;
+        this.lastCursorPosition = 0;
+        this.isCurrentlyTyping = false;
+        this.lastKeyPressed = null;
+        
+        // Performance optimization
+        this.checkedWords = new Set();
+        this.lastCheckedPosition = 0;
+        
         this.currentMisspelledWord = null;
         
         // Initialize the system
@@ -33,7 +49,10 @@ class PageForgeSpellChecker {
         // Initialize UI
         this.updateUI();
         
-        console.log('PageForge SpellChecker initialized');
+        // Initial spellcheck
+        setTimeout(() => this.checkSpelling(), 1000);
+        
+        console.log('PageForge SpellChecker initialized with intelligent triggering');
     }
 
     loadSettings() {
@@ -72,11 +91,41 @@ class PageForgeSpellChecker {
     }
 
     setupEventListeners() {
-        // Editor input for real-time checking
-        this.editor.addEventListener('input', () => {
-            if (this.isEnabled) {
-                this.debounceSpellcheck();
+        // Save selection before any checks
+        this.editor.addEventListener('click', () => this.saveSelection());
+        this.editor.addEventListener('keydown', (e) => {
+            this.saveSelection();
+            this.lastKeyPressed = e.key;
+            
+            // Word completion triggers
+            if (this.isWordCompletionKey(e.key)) {
+                this.scheduleQuickCheck(100); // Immediate check after word completion
             }
+        });
+
+        // Intelligent input handling
+        this.editor.addEventListener('input', (e) => {
+            if (!this.isEnabled) return;
+            
+            this.isCurrentlyTyping = true;
+            
+            // Check for word completion characters
+            if (this.isWordCompletionKey(this.lastKeyPressed)) {
+                this.scheduleQuickCheck(150); // Very quick check after word completion
+            } else {
+                // Progressive timeout for continuous typing
+                this.scheduleQuickCheck(300);
+                this.scheduleComprehensiveCheck(2000);
+            }
+        });
+
+        // Force checks on explicit user actions
+        this.editor.addEventListener('blur', () => {
+            this.scheduleQuickCheck(50); // Immediate check when leaving editor
+        });
+
+        this.editor.addEventListener('paste', () => {
+            setTimeout(() => this.scheduleQuickCheck(100), 100);
         });
 
         // Right-click context menu
@@ -105,38 +154,187 @@ class PageForgeSpellChecker {
         });
     }
 
-    debounceSpellcheck() {
-        clearTimeout(this.spellcheckTimeout);
-        this.spellcheckTimeout = setTimeout(() => {
-            this.checkSpelling();
-        }, 500);
+    isWordCompletionKey(key) {
+        // Keys that typically indicate word completion
+        return [' ', 'Enter', '.', ',', '!', '?', ';', ':', '"', "'", ')', ']', '}'].includes(key);
     }
 
-    async checkSpelling() {
-        if (!this.isEnabled) return;
+    scheduleQuickCheck(delay = 300) {
+        clearTimeout(this.quickCheckTimeout);
+        this.quickCheckTimeout = setTimeout(() => {
+            this.performQuickCheck();
+        }, delay);
+    }
 
-        // Clear existing highlights
-        this.clearHighlights();
+    scheduleComprehensiveCheck(delay = 2000) {
+        clearTimeout(this.comprehensiveCheckTimeout);
+        this.comprehensiveCheckTimeout = setTimeout(() => {
+            this.performComprehensiveCheck();
+        }, delay);
+    }
 
+    async performQuickCheck() {
+        if (!this.isEnabled || this.isChecking) return;
+        
+        this.isChecking = true;
+        this.isCurrentlyTyping = false;
+        
+        try {
+            this.saveSelection();
+            
+            // Get current word count and cursor position
+            const currentWordCount = this.getWordCount();
+            const currentText = this.editor.innerText;
+            
+            // If we have new words, check only the recent content
+            if (currentWordCount > this.lastWordCount || this.hasSubstantialChanges(currentText)) {
+                await this.checkRecentContent();
+            }
+            
+            this.lastWordCount = currentWordCount;
+        } catch (error) {
+            console.error('Quick spellcheck error:', error);
+        } finally {
+            this.isChecking = false;
+            setTimeout(() => this.restoreSelection(), 50);
+        }
+    }
+
+    async performComprehensiveCheck() {
+        if (!this.isEnabled || this.isChecking) return;
+        
+        this.isChecking = true;
+        
+        try {
+            this.saveSelection();
+            await this.checkSpelling(); // Full document check
+        } catch (error) {
+            console.error('Comprehensive spellcheck error:', error);
+        } finally {
+            this.isChecking = false;
+            setTimeout(() => this.restoreSelection(), 50);
+        }
+    }
+
+    hasSubstantialChanges(currentText) {
+        // Check if there have been significant changes since last check
+        const previousText = this.lastCheckedText || '';
+        const changeThreshold = 20; // characters
+        
+        // Simple Levenshtein-like change detection
+        const changes = Math.abs(currentText.length - previousText.length);
+        this.lastCheckedText = currentText;
+        
+        return changes > changeThreshold;
+    }
+
+    async checkRecentContent() {
+        // Optimized: Only check words that haven't been validated recently
         const text = this.editor.innerText;
         const words = this.extractWords(text);
-
-        for (const wordInfo of words) {
-            const { word, positions } = wordInfo;
+        
+        const recentWords = words.filter(wordInfo => 
+            !this.checkedWords.has(wordInfo.word.toLowerCase())
+        );
+        
+        for (const wordInfo of recentWords) {
+            const { word } = wordInfo;
             
-            if (word.length < 2 || /^\d+$/.test(word)) continue;
+            if (this.shouldSkipWord(word)) continue;
             
             const isCorrect = await this.checkWord(word);
             
             if (!isCorrect) {
-                this.highlightWordSurgical(word, positions);
+                await this.highlightWordSurgical(word, [wordInfo.positions[0]]);
+            } else {
+                // Cache correctly spelled words
+                this.checkedWords.add(word.toLowerCase());
             }
         }
     }
 
+    saveSelection() {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0 && this.editor.contains(selection.anchorNode)) {
+            this.lastSelection = {
+                anchorNode: selection.anchorNode,
+                anchorOffset: selection.anchorOffset,
+                focusNode: selection.focusNode,
+                focusOffset: selection.focusOffset
+            };
+        }
+    }
+
+    restoreSelection() {
+        if (!this.lastSelection) return;
+        
+        try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            
+            range.setStart(this.lastSelection.anchorNode, this.lastSelection.anchorOffset);
+            range.setEnd(this.lastSelection.focusNode, this.lastSelection.focusOffset);
+            
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } catch (e) {
+            // Selection restoration failed, continue silently
+        }
+    }
+
+    getWordCount() {
+        const text = this.editor.innerText.replace('📌', '') || '';
+        const words = text.trim().split(/\s+/).filter(Boolean);
+        return words.length;
+    }
+
+    async checkSpelling() {
+        if (!this.isEnabled || this.isChecking) return;
+        
+        this.isChecking = true;
+        
+        try {
+            this.saveSelection();
+            this.clearHighlights();
+            this.checkedWords.clear(); // Reset cache for full check
+
+            const text = this.editor.innerText;
+            const words = this.extractWords(text);
+
+            for (const wordInfo of words) {
+                const { word } = wordInfo;
+                
+                if (this.shouldSkipWord(word)) continue;
+                
+                const isCorrect = await this.checkWord(word);
+                
+                if (!isCorrect) {
+                    await this.highlightWordSurgical(word, [wordInfo.positions[0]]);
+                } else {
+                    this.checkedWords.add(word.toLowerCase());
+                }
+            }
+            
+            this.lastWordCount = this.getWordCount();
+            this.lastCheckedText = text;
+        } catch (error) {
+            console.error('Spellcheck error:', error);
+        } finally {
+            this.isChecking = false;
+            setTimeout(() => this.restoreSelection(), 50);
+        }
+    }
+
+    shouldSkipWord(word) {
+        return word.length < 2 || 
+               /^\d+$/.test(word) || 
+               word.includes("'") ||
+               this.customDictionary.has(word.toLowerCase());
+    }
+
     extractWords(text) {
         const words = new Map();
-        const wordRegex = /[a-zA-Z]+(?:'[a-zA-Z]+)*/g;
+        const wordRegex = /[a-zA-Z]+(?:'[a-zA-Z]{1,3})?/g;
         let match;
         
         while ((match = wordRegex.exec(text)) !== null) {
@@ -154,116 +352,173 @@ class PageForgeSpellChecker {
     }
 
     async checkWord(word) {
-        // Check custom dictionary first
         if (this.customDictionary.has(word.toLowerCase())) {
             return true;
         }
 
-        // Simple mock implementation - replace with actual Hunspell logic
-        // For now, we'll use a basic dictionary of common words
-        return this.mockSpellCheck(word);
+        return this.robustSpellCheck(word);
     }
 
-    mockSpellCheck(word) {
-        // Common English words dictionary
-        const commonWords = new Set([
-            'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her',
-            'was', 'one', 'our', 'out', 'get', 'has', 'him', 'how', 'man', 'new',
-            'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let',
-            'put', 'say', 'she', 'too', 'use', 'that', 'with', 'have', 'this',
-            'will', 'your', 'from', 'they', 'know', 'want', 'been', 'good', 'much',
-            'some', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make',
-            'many', 'then', 'well', 'were', 'what', 'where', 'which', 'while',
-            'who', 'will', 'with', 'would', 'write', 'year', 'you', 'young', 'your',
-            'welcome', 'to', 'pageforge', 'this', 'is', 'your', 'new', 'document', 'start', 'typing', 'here',
-            'features', 'here', 'are', 'some', 'of', 'the', 'things', 'you', 'can', 'do',
-            'use', 'the', 'toolbar', 'above', 'style', 'your', 'text', 'bold', 'italic', 'headings', 'etc',
-            'work', 'automatically', 'saved', 'browser', 'local', 'storage',
-            'toggle', 'between', 'light', 'dark', 'mode', 'using', 'icon', 'in', 'header',
-            'hierarchy', 'panel', 'on', 'left', 'see', 'structure',
-            'outline', 'automatically', 'updates', 'as', 'add', 'heading', 'or', 'styles',
-            'even', 'drag', 'drop', 'sections', 're', 'order',
-            'new', 'click', 'inside', 'section', 'see', 'dashed', 'line', 'showing', 'scope', 'just', 'like', 'ide',
-            'second', 'paragraph', 'belongs', 'child', 'content', 'part', 'blockquote', 'useful', 'highlighting', 'quotes', 'important', 'notes'
+    robustSpellCheck(word) {
+        // Comprehensive English dictionary (same as previous version)
+        const dictionary = new Set([
+            'a', 'an', 'the', 'and', 'or', 'but', 'if', 'because', 'as', 'what',
+            'when', 'where', 'how', 'why', 'who', 'which', 'that', 'this', 'these',
+            'those', 'then', 'than', 'thus', 'so', 'such', 'both', 'either', 'neither',
+            'all', 'any', 'each', 'every', 'few', 'more', 'most', 'other', 'some',
+            'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'too', 'very',
+            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her',
+            'us', 'them', 'my', 'your', 'his', 'its', 'our', 'their', 'mine',
+            'yours', 'hers', 'ours', 'theirs', 'myself', 'yourself', 'himself',
+            'herself', 'itself', 'ourselves', 'yourselves', 'themselves',
+            'be', 'is', 'am', 'are', 'was', 'were', 'being', 'been', 'have', 'has',
+            'had', 'having', 'do', 'does', 'did', 'doing', 'say', 'says', 'said',
+            'saying', 'get', 'gets', 'got', 'getting', 'make', 'makes', 'made',
+            'making', 'go', 'goes', 'went', 'going', 'know', 'knows', 'knew',
+            'knowing', 'take', 'takes', 'took', 'taking', 'see', 'sees', 'saw',
+            'seeing', 'come', 'comes', 'came', 'coming', 'think', 'thinks', 'thought',
+            'thinking', 'look', 'looks', 'looked', 'looking', 'want', 'wants', 'wanted',
+            'wanting', 'give', 'gives', 'gave', 'giving', 'use', 'uses', 'used',
+            'using', 'find', 'finds', 'found', 'finding', 'tell', 'tells', 'told',
+            'telling', 'ask', 'asks', 'asked', 'asking', 'work', 'works', 'worked',
+            'working', 'seem', 'seems', 'seemed', 'seeming', 'feel', 'feels', 'felt',
+            'feeling', 'try', 'tries', 'tried', 'trying', 'leave', 'leaves', 'left',
+            'leaving', 'call', 'calls', 'called', 'calling',
+            'time', 'person', 'year', 'way', 'day', 'thing', 'man', 'world', 'life',
+            'hand', 'part', 'child', 'eye', 'woman', 'place', 'work', 'week', 'case',
+            'point', 'government', 'company', 'number', 'group', 'problem', 'fact',
+            'good', 'new', 'first', 'last', 'long', 'great', 'little', 'own', 'other',
+            'old', 'right', 'big', 'high', 'different', 'small', 'large', 'next',
+            'early', 'young', 'important', 'few', 'public', 'bad', 'same', 'able',
+            'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further',
+            'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all',
+            'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+            'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+            'i\'m', 'you\'re', 'he\'s', 'she\'s', 'it\'s', 'we\'re', 'they\'re',
+            'i\'ve', 'you\'ve', 'we\'ve', 'they\'ve', 'i\'ll', 'you\'ll', 'he\'ll',
+            'she\'ll', 'it\'ll', 'we\'ll', 'they\'ll', 'isn\'t', 'aren\'t', 'wasn\'t',
+            'weren\'t', 'haven\'t', 'hasn\'t', 'hadn\'t', 'don\'t', 'doesn\'t', 'didn\'t',
+            'won\'t', 'wouldn\'t', 'shan\'t', 'shouldn\'t', 'can\'t', 'cannot',
+            'couldn\'t', 'mustn\'t', 'let\'s', 'that\'s', 'who\'s', 'what\'s', 'here\'s',
+            'there\'s', 'when\'s', 'where\'s', 'why\'s', 'how\'s',
+            'welcome', 'pageforge', 'document', 'start', 'typing', 'features',
+            'toolbar', 'style', 'text', 'bold', 'italic', 'headings', 'work',
+            'automatically', 'saved', 'browser', 'local', 'storage', 'toggle',
+            'between', 'light', 'dark', 'mode', 'using', 'icon', 'header',
+            'hierarchy', 'panel', 'left', 'structure', 'outline', 'updates',
+            'heading', 'styles', 'drag', 'drop', 'sections', 'click', 'inside',
+            'section', 'dashed', 'line', 'showing', 'scope', 'ide', 'paragraph',
+            'belongs', 'child', 'content', 'blockquote', 'useful', 'highlighting',
+            'quotes', 'important', 'notes'
         ]);
 
-        return commonWords.has(word.toLowerCase()) || word.length <= 2;
-    }
-
-    highlightWordSurgical(word, positions) {
-        // Use TreeWalker to find text nodes without destroying HTML structure
-        const walker = document.createTreeWalker(
-            this.editor,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: function(node) {
-                    // Skip text nodes that are already inside misspelled-word spans
-                    if (node.parentNode.classList && node.parentNode.classList.contains('misspelled-word')) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    // Skip text nodes in elements we don't want to spellcheck
-                    if (node.parentNode.tagName === 'SCRIPT' || node.parentNode.tagName === 'STYLE') {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-            },
-            false
-        );
-
-        const textNodes = [];
-        let node;
-        while (node = walker.nextNode()) {
-            textNodes.push(node);
+        if (dictionary.has(word.toLowerCase())) {
+            return true;
         }
 
-        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
-
-        textNodes.forEach(textNode => {
-            const text = textNode.textContent;
-            const matches = [...text.matchAll(regex)];
-            
-            if (matches.length > 0) {
-                // We have matches, need to replace this text node
-                const parent = textNode.parentNode;
-                
-                // If parent is already a misspelled word span for this word, skip
-                if (parent.classList && parent.classList.contains('misspelled-word') && parent.dataset.word === word) {
-                    return;
+        // Check for common suffixes
+        const commonSuffixes = ['ing', 'ed', 's', 'es', 'ly', 'er', 'est', 'ment', 'ness', 'tion'];
+        const baseWord = word.toLowerCase();
+        
+        for (const suffix of commonSuffixes) {
+            if (baseWord.endsWith(suffix)) {
+                const base = baseWord.slice(0, -suffix.length);
+                if (dictionary.has(base) && base.length > 1) {
+                    return true;
                 }
+            }
+        }
 
-                const fragment = document.createDocumentFragment();
-                let lastIndex = 0;
+        // Check for common prefixes
+        const commonPrefixes = ['un', 're', 'pre', 'dis', 'mis'];
+        for (const prefix of commonPrefixes) {
+            if (baseWord.startsWith(prefix)) {
+                const base = baseWord.slice(prefix.length);
+                if (dictionary.has(base) && base.length > 1) {
+                    return true;
+                }
+            }
+        }
 
-                matches.forEach(match => {
-                    // Add text before match
-                    if (match.index > lastIndex) {
-                        fragment.appendChild(
-                            document.createTextNode(text.substring(lastIndex, match.index))
-                        );
+        return false;
+    }
+
+    async highlightWordSurgical(word, positions) {
+        return new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                try {
+                    const walker = document.createTreeWalker(
+                        this.editor,
+                        NodeFilter.SHOW_TEXT,
+                        {
+                            acceptNode: (node) => {
+                                if (node.parentNode.classList && node.parentNode.classList.contains('misspelled-word')) {
+                                    return NodeFilter.FILTER_REJECT;
+                                }
+                                if (node.parentNode.tagName === 'SCRIPT' || node.parentNode.tagName === 'STYLE') {
+                                    return NodeFilter.FILTER_REJECT;
+                                }
+                                return NodeFilter.FILTER_ACCEPT;
+                            }
+                        },
+                        false
+                    );
+
+                    const textNodes = [];
+                    let node;
+                    while (node = walker.nextNode()) {
+                        textNodes.push(node);
                     }
 
-                    // Add highlighted word
-                    const span = document.createElement('span');
-                    span.className = 'misspelled-word';
-                    span.dataset.word = word.toLowerCase();
-                    span.textContent = match[0];
-                    fragment.appendChild(span);
+                    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
 
-                    lastIndex = match.index + match[0].length;
-                });
+                    textNodes.forEach(textNode => {
+                        const text = textNode.textContent;
+                        const matches = [...text.matchAll(regex)];
+                        
+                        if (matches.length > 0) {
+                            const parent = textNode.parentNode;
+                            
+                            if (parent.classList && parent.classList.contains('misspelled-word') && parent.dataset.word === word) {
+                                return;
+                            }
 
-                // Add remaining text
-                if (lastIndex < text.length) {
-                    fragment.appendChild(
-                        document.createTextNode(text.substring(lastIndex))
-                    );
+                            const fragment = document.createDocumentFragment();
+                            let lastIndex = 0;
+
+                            matches.forEach(match => {
+                                if (match.index > lastIndex) {
+                                    fragment.appendChild(
+                                        document.createTextNode(text.substring(lastIndex, match.index))
+                                    );
+                                }
+
+                                const span = document.createElement('span');
+                                span.className = 'misspelled-word';
+                                span.dataset.word = word.toLowerCase();
+                                span.textContent = match[0];
+                                fragment.appendChild(span);
+
+                                lastIndex = match.index + match[0].length;
+                            });
+
+                            if (lastIndex < text.length) {
+                                fragment.appendChild(
+                                    document.createTextNode(text.substring(lastIndex))
+                                );
+                            }
+
+                            parent.replaceChild(fragment, textNode);
+                        }
+                    });
+
+                    resolve(true);
+                } catch (error) {
+                    console.error('Error highlighting word:', error);
+                    resolve(false);
                 }
-
-                // Replace the original text node
-                parent.replaceChild(fragment, textNode);
-            }
+            });
         });
     }
 
@@ -271,9 +526,7 @@ class PageForgeSpellChecker {
         const misspelledWords = this.editor.querySelectorAll('.misspelled-word');
         misspelledWords.forEach(span => {
             const parent = span.parentNode;
-            // Replace span with its text content
             parent.replaceChild(document.createTextNode(span.textContent), span);
-            // Normalize to merge adjacent text nodes
             parent.normalize();
         });
     }
@@ -282,7 +535,7 @@ class PageForgeSpellChecker {
         const word = element.dataset.word;
         this.currentMisspelledWord = { element, word };
         
-        const suggestions = this.getSuggestions(word);
+        const suggestions = this.getSmartSuggestions(word);
         
         this.contextMenu.innerHTML = '';
         
@@ -310,29 +563,13 @@ class PageForgeSpellChecker {
         addToDictDiv.addEventListener('click', () => {
             this.addToCustomDictionary(word);
             this.hideContextMenu();
-            this.checkSpelling(); // Re-check to remove highlighting
+            setTimeout(() => this.scheduleQuickCheck(100), 100);
         });
         this.contextMenu.appendChild(addToDictDiv);
         
-        // Position and show the context menu
-        const rect = this.contextMenu.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        
-        // Adjust position to stay within viewport
-        let adjustedX = x;
-        let adjustedY = y;
-        
-        if (x + rect.width > viewportWidth) {
-            adjustedX = viewportWidth - rect.width - 10;
-        }
-        
-        if (y + rect.height > viewportHeight) {
-            adjustedY = viewportHeight - rect.height - 10;
-        }
-        
-        this.contextMenu.style.left = adjustedX + 'px';
-        this.contextMenu.style.top = adjustedY + 'px';
+        // Position context menu
+        this.contextMenu.style.left = x + 'px';
+        this.contextMenu.style.top = y + 'px';
         this.contextMenu.classList.remove('hidden');
     }
 
@@ -341,22 +578,25 @@ class PageForgeSpellChecker {
         this.currentMisspelledWord = null;
     }
 
-    getSuggestions(word) {
-        // Mock suggestions - replace with Hunspell suggestions
-        const suggestionMap = {
-            'teh': ['the'],
-            'adn': ['and'],
-            'recieve': ['receive'],
-            'seperate': ['separate'],
-            'definately': ['definitely'],
-            'occured': ['occurred'],
-            'accomodate': ['accommodate'],
-            'alot': ['a lot'],
-            'becuase': ['because'],
-            'neccessary': ['necessary']
-        };
+    getSmartSuggestions(word) {
+        const lowercaseWord = word.toLowerCase();
         
-        return suggestionMap[word.toLowerCase()] || [];
+        const suggestionMap = {
+            'teh': ['the'], 'adn': ['and'], 'taht': ['that'], 'tihs': ['this'],
+            'awya': ['away'], 'bcak': ['back'], 'becuase': ['because'], 'cna': ['can'],
+            'dont': ['don\'t'], 'esle': ['else'], 'frist': ['first'], 'fomr': ['form'],
+            'haev': ['have'], 'htere': ['there'], 'htis': ['this'], 'hwne': ['when'],
+            'hwo': ['who'], 'jsut': ['just'], 'knwo': ['know'], 'liek': ['like'],
+            'mkae': ['make'], 'mroe': ['more'], 'peopel': ['people'], 'realy': ['really'],
+            'seh': ['she'], 'siad': ['said'], 'tkae': ['take'], 'thna': ['than'],
+            'thne': ['then'], 'thsi': ['this'], 'todya': ['today'], 'tought': ['thought'],
+            'twpo': ['two'], 'wrod': ['word'], 'wrods': ['words'], 'wroten': ['written'],
+            'yera': ['year'], 'yuo': ['you'], 'yuor': ['your'],
+            'accomodate': ['accommodate'], 'definately': ['definitely'], 'recieve': ['receive'],
+            'seperate': ['separate'], 'occured': ['occurred'], 'neccessary': ['necessary']
+        };
+
+        return suggestionMap[lowercaseWord] || [];
     }
 
     replaceWord(newWord) {
@@ -372,17 +612,22 @@ class PageForgeSpellChecker {
         
         document.execCommand('insertText', false, newWord);
         
-        // Re-check spelling after replacement
-        setTimeout(() => this.checkSpelling(), 100);
+        // Update cache
+        this.checkedWords.add(newWord.toLowerCase());
+        
+        // Quick re-check
+        setTimeout(() => this.scheduleQuickCheck(100), 100);
     }
 
     addToCustomDictionary(word) {
         this.customDictionary.add(word.toLowerCase());
+        this.checkedWords.add(word.toLowerCase()); // Also add to cache
         this.saveCustomDictionary();
     }
 
     removeFromCustomDictionary(word) {
         this.customDictionary.delete(word.toLowerCase());
+        this.checkedWords.delete(word.toLowerCase()); // Remove from cache
         this.saveCustomDictionary();
     }
 
@@ -392,7 +637,7 @@ class PageForgeSpellChecker {
         this.saveSettings();
         
         if (this.isEnabled) {
-            this.checkSpelling();
+            setTimeout(() => this.scheduleQuickCheck(100), 100);
         } else {
             this.clearHighlights();
         }
@@ -405,7 +650,7 @@ class PageForgeSpellChecker {
         this.saveSettings();
         
         if (this.isEnabled) {
-            this.checkSpelling();
+            setTimeout(() => this.scheduleQuickCheck(100), 100);
         }
     }
 
@@ -427,13 +672,14 @@ class PageForgeSpellChecker {
     // Public method to manually trigger spellcheck
     checkDocument() {
         if (this.isEnabled) {
-            this.checkSpelling();
+            this.performComprehensiveCheck();
         }
     }
 
     // Cleanup method
     destroy() {
-        clearTimeout(this.spellcheckTimeout);
+        clearTimeout(this.quickCheckTimeout);
+        clearTimeout(this.comprehensiveCheckTimeout);
         if (this.contextMenu && this.contextMenu.parentNode) {
             this.contextMenu.parentNode.removeChild(this.contextMenu);
         }
