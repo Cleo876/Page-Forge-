@@ -1,5 +1,5 @@
 // pageforge-hierarchy.js
-const HIERARCHY_VERSION = '1.0.0';
+const HIERARCHY_VERSION = '1.0.4';
 
 class PageForgeHierarchy {
     constructor(editor, hierarchyList, statusBar) {
