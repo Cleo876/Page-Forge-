@@ -1,5 +1,5 @@
 // pageforge-hierarchy.js
-const HIERARCHY_VERSION = '1.0.4';
+const HIERARCHY_VERSION = '1.0.0';
 
 class PageForgeHierarchy {
     constructor(editor, hierarchyList, statusBar) {
@@ -7,8 +7,6 @@ class PageForgeHierarchy {
         this.hierarchyList = hierarchyList;
         this.statusBar = statusBar;
         this.currentDraggedSection = null;
-        this.currentDraggedPin = null;
-        this.isDraggingPin = false;
         
         this.init();
     }
@@ -16,12 +14,11 @@ class PageForgeHierarchy {
     init() {
         this.setupEventListeners();
         this.updateHierarchy();
-        this.createPins();
         console.log('PageForge Hierarchy initialized');
     }
 
     setupEventListeners() {
-        // Drag and Drop Event Listeners for hierarchy items
+        // Drag and Drop Event Listeners
         this.hierarchyList.addEventListener('dragstart', (e) => {
             const item = e.target.closest('.hierarchy-item');
             if (item) {
@@ -78,208 +75,6 @@ class PageForgeHierarchy {
             this.clearDropTargets();
             this.currentDraggedSection = null;
         });
-
-        // Pin drag and drop events
-        this.editor.addEventListener('mousedown', (e) => {
-            const pin = e.target.closest('.section-pin');
-            if (pin) {
-                e.preventDefault();
-                this.startPinDrag(pin, e.clientY);
-            }
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (this.isDraggingPin && this.currentDraggedPin) {
-                this.dragPin(e.clientY);
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (this.isDraggingPin) {
-                this.endPinDrag();
-            }
-        });
-    }
-
-    createPins() {
-        // Remove existing pins
-        const existingPins = this.editor.querySelectorAll('.section-pin');
-        existingPins.forEach(pin => pin.remove());
-
-        const headers = this.editor.querySelectorAll('h1, h2, h3');
-        
-        headers.forEach((header, index) => {
-            const id = header.id || `section-${Date.now()}-${index}`;
-            header.id = id;
-
-            // Find the end of this section
-            const sectionEnd = this.findSectionEnd(header);
-            
-            if (sectionEnd) {
-                this.createPinForSection(header, sectionEnd);
-            }
-        });
-    }
-
-    createPinForSection(header, sectionEnd) {
-        const pin = document.createElement('div');
-        pin.className = 'section-pin';
-        pin.innerHTML = '📍'; // Pin icon
-        pin.setAttribute('data-header-id', header.id);
-        
-        // Style the pin
-        Object.assign(pin.style, {
-            position: 'absolute',
-            right: '10px',
-            cursor: 'ns-resize',
-            userSelect: 'none',
-            zIndex: '1000',
-            fontSize: '16px',
-            opacity: '0.7',
-            transition: 'opacity 0.2s'
-        });
-
-        pin.addEventListener('mouseenter', () => {
-            pin.style.opacity = '1';
-        });
-
-        pin.addEventListener('mouseleave', () => {
-            if (!this.isDraggingPin) {
-                pin.style.opacity = '0.7';
-            }
-        });
-
-        // Position the pin
-        this.positionPin(pin, sectionEnd);
-        
-        // Add drag listeners
-        pin.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            this.startPinDrag(pin, e.clientY);
-        });
-        
-        // Add to editor
-        this.editor.appendChild(pin);
-    }
-
-    positionPin(pin, targetElement) {
-        const rect = targetElement.getBoundingClientRect();
-        const editorRect = this.editor.getBoundingClientRect();
-        
-        pin.style.top = `${rect.bottom - editorRect.top}px`;
-    }
-
-    findSectionEnd(header) {
-        const headerLevel = parseInt(header.tagName.substring(1));
-        let currentNode = header.nextElementSibling;
-        let lastNode = header;
-
-        while (currentNode) {
-            // Skip pin elements
-            if (currentNode.classList.contains('section-pin')) {
-                currentNode = currentNode.nextElementSibling;
-                continue;
-            }
-
-            // Stop if we hit another header of same or higher level
-            if (currentNode.tagName.match(/^H[1-3]$/)) {
-                const currentLevel = parseInt(currentNode.tagName.substring(1));
-                if (currentLevel <= headerLevel) {
-                    break;
-                }
-            }
-            
-            lastNode = currentNode;
-            currentNode = currentNode.nextElementSibling;
-            
-            // Stop if we're at the end of the document
-            if (!currentNode) {
-                break;
-            }
-        }
-
-        return lastNode;
-    }
-
-    startPinDrag(pin, startY) {
-        this.isDraggingPin = true;
-        this.currentDraggedPin = pin;
-        this.dragStartY = startY;
-        this.originalPinTop = parseInt(pin.style.top);
-        
-        pin.style.opacity = '1';
-        pin.style.zIndex = '1001';
-        
-        // Add visual feedback
-        document.body.style.cursor = 'ns-resize';
-        document.body.style.userSelect = 'none';
-        
-        document.addEventListener('mousemove', this.onPinDrag.bind(this));
-        document.addEventListener('mouseup', this.onPinDragEnd.bind(this));
-    }
-
-    onPinDrag(e) {
-        if (!this.isDraggingPin || !this.currentDraggedPin) return;
-
-        const deltaY = e.clientY - this.dragStartY;
-        const newTop = this.originalPinTop + deltaY;
-        
-        // Constrain dragging to valid positions
-        const headerId = this.currentDraggedPin.getAttribute('data-header-id');
-        const header = document.getElementById(headerId);
-        
-        if (header) {
-            const headerRect = header.getBoundingClientRect();
-            const editorRect = this.editor.getBoundingClientRect();
-            const minTop = headerRect.bottom - editorRect.top + 5; // Can't go above header
-            
-            // Apply constraints
-            this.currentDraggedPin.style.top = `${Math.max(minTop, newTop)}px`;
-        }
-    }
-
-    onPinDragEnd() {
-        if (!this.isDraggingPin || !this.currentDraggedPin) return;
-
-        this.isDraggingPin = false;
-        
-        // Reset cursor and selection
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        
-        this.currentDraggedPin.style.zIndex = '1000';
-        this.currentDraggedPin.style.opacity = '0.7';
-        
-        // Update the section boundaries based on new pin position
-        this.updateSectionBoundary(this.currentDraggedPin);
-        
-        document.removeEventListener('mousemove', this.onPinDrag.bind(this));
-        document.removeEventListener('mouseup', this.onPinDragEnd.bind(this));
-        
-        this.currentDraggedPin = null;
-    }
-
-    updateSectionBoundary(pin) {
-        const headerId = pin.getAttribute('data-header-id');
-        const header = document.getElementById(headerId);
-        
-        if (!header) return;
-
-        // Calculate the new end position based on pin position
-        const pinRect = pin.getBoundingClientRect();
-        const editorRect = this.editor.getBoundingClientRect();
-        const pinBottom = pinRect.bottom - editorRect.top;
-        
-        // Store the pin position for section boundary calculations
-        header.dataset.pinnedEndPosition = pinBottom.toString();
-        
-        // Update status
-        this.statusBar.textContent = 'Section boundary updated';
-        setTimeout(() => {
-            this.statusBar.textContent = 'All changes saved locally.';
-        }, 2000);
-        
-        this.triggerSave();
     }
 
     clearDropTargets() {
@@ -342,9 +137,6 @@ class PageForgeHierarchy {
                 levelStack.push({ ul: newUl, level: level });
             }
         });
-
-        // Update pins after hierarchy update
-        setTimeout(() => this.createPins(), 0);
     }
 
     moveSection(draggedHeader, targetHeader) {
@@ -364,7 +156,7 @@ class PageForgeHierarchy {
         // We insert before the first node of the target section (which is the target header)
         this.editor.insertBefore(fragment, targetSectionNodes[0]);
         
-        // 5. Update the hierarchy display and pins
+        // 5. Update the hierarchy display
         this.updateHierarchy();
         
         // 6. Show feedback
@@ -383,27 +175,23 @@ class PageForgeHierarchy {
         const nodes = [header];
         const headerLevel = parseInt(header.tagName.substring(1));
         
-        // Check if a manual end-point is pinned via position
-        const pinnedEndPosition = header.dataset.pinnedEndPosition;
+        // Check if a manual end-point is pinned
+        const pinnedEndId = header.dataset.pinnedEndId;
+        const pinnedEndElement = pinnedEndId ? document.getElementById(pinnedEndId) : null;
         
         let currentNode = header.nextElementSibling;
         
         while (currentNode) {
-            // Skip pin elements
-            if (currentNode.classList.contains('section-pin')) {
+            // Skip the pin element if it's encountered as a sibling
+            if (currentNode.id === 'section-pin') {
                 currentNode = currentNode.nextElementSibling;
                 continue;
             }
 
-            // Check if we've reached the manually set pin boundary
-            if (pinnedEndPosition) {
-                const currentNodeRect = currentNode.getBoundingClientRect();
-                const editorRect = this.editor.getBoundingClientRect();
-                const currentNodeTop = currentNodeRect.top - editorRect.top;
-                
-                if (currentNodeTop >= parseInt(pinnedEndPosition)) {
-                    break; // Stop, we've reached the pinned boundary
-                }
+            // Stop if we hit the pinned element
+            if (pinnedEndElement && currentNode === pinnedEndElement) {
+                nodes.push(currentNode);
+                break; // Stop, we found the pinned end
             }
             
             // Stop if we hit the *next* header of the same or higher level
@@ -417,7 +205,7 @@ class PageForgeHierarchy {
             nodes.push(currentNode);
             
             // If we are *not* using a pin, and we're at the last element, stop
-            if (!pinnedEndPosition && !currentNode.nextElementSibling) {
+            if (!pinnedEndElement && !currentNode.nextElementSibling) {
                 break;
             }
             
@@ -437,23 +225,12 @@ class PageForgeHierarchy {
     // Public method to manually refresh the hierarchy
     refresh() {
         this.updateHierarchy();
-        this.createPins();
     }
 
     // Cleanup method
     destroy() {
         this.clearDropTargets();
         this.currentDraggedSection = null;
-        this.currentDraggedPin = null;
-        this.isDraggingPin = false;
-        
-        // Remove all pins
-        const pins = this.editor.querySelectorAll('.section-pin');
-        pins.forEach(pin => pin.remove());
-        
-        // Remove event listeners
-        document.removeEventListener('mousemove', this.onPinDrag.bind(this));
-        document.removeEventListener('mouseup', this.onPinDragEnd.bind(this));
     }
 }
 
